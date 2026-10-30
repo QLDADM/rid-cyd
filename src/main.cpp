@@ -6,6 +6,7 @@
 // automatycznie (na stronie: "wykryto: CYD").
 // Do tego drony Wi-Fi bez Remote ID (wifidrone.h), zajętość kanałów Wi-Fi i - gdy podłączony jest
 // moduł nRF24L01 - analizator pasma 2,4 GHz wykrywający aparatury FPV (nrf24.h, zakładka "Pasmo").
+// Agent może się też łączyć przez Bluetooth zamiast kabla (pcble.h), z tym samym protokołem.
 //
 // Polecenia przez port szeregowy: ID, CH 0..13, TIME <unix>, PING, TAG <id> own|foreign|-,
 // TAGCLR, TAGS, TAGPEND, TAGPENDCLR, DUMP (pusty - zapis jest na karcie SD).
@@ -41,28 +42,9 @@ static uint16_t bootId = 0;
 #define FW_VERSION "1.5"  // wspólny numer dla Heltec, CYD i M5 - nowy tylko przy dużych zmianach
 #include "drones.h"
 #include "wifidrone.h"
+#include "hostout.h"  // od tego miejsca Serial = USB + kanał PC przez BLE
 
 static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const uint8_t *data, size_t len);
-
-#include "radio.h"
-
-static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const uint8_t *data, size_t len) {
-  if (len > sizeof(Frame::data)) return;
-  Frame f;
-  f.transport = transport;
-  f.channel = transport == T_BLE ? 0 : currentChannel;
-  f.rssi = rssi;
-  memcpy(f.mac, mac, 6);
-  f.len = len;
-  memcpy(f.data, data, len);
-  if (xQueueSend(frameQueue, &f, 0) == pdTRUE) counts[transport]++;
-  else dropped++;
-}
-
-#include "nrf24.h"
-#include "sdlog.h"
-#include "touch.h"
-#include "ui.h"
 
 // ---------------------------------------------------------------- oznaczenia (jak w Heltec)
 
@@ -109,6 +91,27 @@ static void printTags(bool pending) {
   }
   Serial.println("}}");
 }
+
+#include "radio.h"
+
+static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const uint8_t *data, size_t len) {
+  if (len > sizeof(Frame::data)) return;
+  Frame f;
+  f.transport = transport;
+  f.channel = transport == T_BLE ? 0 : currentChannel;
+  f.rssi = rssi;
+  memcpy(f.mac, mac, 6);
+  f.len = len;
+  memcpy(f.data, data, len);
+  if (xQueueSend(frameQueue, &f, 0) == pdTRUE) counts[transport]++;
+  else dropped++;
+}
+
+#include "nrf24.h"
+#include "sdlog.h"
+#include "pcble.h"
+#include "touch.h"
+#include "ui.h"
 
 // ---------------------------------------------------------------- sygnalizacja
 
@@ -177,10 +180,10 @@ static void printFrame(const Frame &f) {
 static void printStatus() {
   Serial.printf("{\"status\":{\"dev\":\"cyd\",\"beacon\":%u,\"nan\":%u,\"ble\":%u,\"dropped\":%u,\"ch\":%u,"
                 "\"all_beacon\":%u,\"all_ble\":%u,\"ble_on\":%s,\"sd\":%s,\"sd_lines\":%u,\"sd_free_mb\":%u,\"boot\":%u,\"up\":%u,"
-                "\"wifi_drone\":%u,\"nrf24\":%s}}\n",
+                "\"wifi_drone\":%u,\"nrf24\":%s,\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s}}\n",
                 counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, currentChannel, allBeacon, allBle,
                 bleEnabled ? "true" : "false", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
-                wdSeen, nrfPresent ? "true" : "false");
+                wdSeen, nrfPresent ? "true" : "false", pcPin, pcName, hostBleOn ? "true" : "false");
 }
 
 static void handleSerialCommand() {
@@ -193,6 +196,7 @@ static void handleSerialCommand() {
       continue;
     }
     buf[n] = 0;
+    if (n) hostCmdMs = millis();
     if (!strcasecmp(buf, "ID")) {
       Serial.println("{\"info\":\"RID sensor CYD\",\"fw\":\"" FW_VERSION "\",\"dev\":\"cyd\"}");
       printStatus();
@@ -310,6 +314,7 @@ static void onTap(int x, int y) {
       if (!sdEnabled && sdFile) sdFile.close();
     } else if (i == 5) {
       bleSetEnabled(!bleEnabled);
+      pcAdvertise(bleEnabled);  // tryb "tylko Wi-Fi": bez połączenia z komputerem przez BLE
     } else if (i == 6) {
       screen = SCR_CALIB;
       calStep = 0;
@@ -391,6 +396,7 @@ void setup() {
 
   frameQueue = xQueueCreate(32, sizeof(Frame));
   radioBegin();
+  pcBleBegin(bleEnabled);
   nrfBegin();  // moduł nRF24 - wykrywany sam, także po podłączeniu w trakcie pracy
   Serial.println("{\"info\":\"RID sensor CYD gotowy\",\"dev\":\"cyd\"}");
 }
@@ -440,6 +446,13 @@ void loop() {
     uiDirty = true;
   }
   chSummaryTick();
+  pcBleTick();
+  static bool pairWas = false;
+  if (blePairing != pairWas || bleUiDirty) {  // PIN na górnym pasku w trakcie parowania, zmiany z telefonu
+    pairWas = blePairing;
+    bleUiDirty = false;
+    uiDirty = true;
+  }
   handleSerialCommand();
   touchTick();
   sdTick();

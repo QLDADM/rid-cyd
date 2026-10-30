@@ -85,8 +85,14 @@ static void drawTopBar(int count) {
   tft.setTextColor(C_ACCENT, C_PANEL);
   tft.setTextDatum(TL_DATUM);
   tft.drawString("RID CYD", 4, 2, 2);
+  if (blePairing) {  // telefon albo komputer się paruje - PIN do wpisania
+    tft.setTextColor(C_ACCENT, C_PANEL);
+    tft.drawString("PIN " + String(pcPin), 76, 2, 2);
+  } else {
+    tft.setTextColor(C_TEXT, C_PANEL);
+    tft.drawString("Drony: " + String(count), 76, 2, 2);
+  }
   tft.setTextColor(C_TEXT, C_PANEL);
-  tft.drawString("Drony: " + String(count), 76, 2, 2);
   tft.setTextDatum(TR_DATUM);
   if (nrfAlarm) {  // aparatura 2,4 GHz w pobliżu - widoczne na każdym ekranie
     tft.setTextColor(C_FOREIGN, C_PANEL);
@@ -95,7 +101,7 @@ static void drawTopBar(int count) {
     tft.setTextColor(C_TEXT, C_PANEL);
     tft.setTextDatum(TR_DATUM);
   }
-  String right = String(bleEnabled ? "" : "WiFi ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + "CH" + String(currentChannel) +
+  String right = String(bleEnabled ? (hostBleOn ? "PC " : "") : "WiFi ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + "CH" + String(currentChannel) +
                  (fixedChannel ? " " : "* ") + clockText();
   tft.drawString(right, 316, 2, 2);
 }
@@ -353,7 +359,7 @@ static String settingText(int i) {
     case 1: return nrfPresent ? String("Jasnosc ekranu: stala (pin dla nRF24)") : "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
     case 2: return String("Odwroc kolory: ") + (invertColors ? "tak" : "nie");
     case 3: return String("Dzwiek (glosnik): ") + (soundOn ? "wl." : "wyl.");
-    case 5: return String("Bluetooth: ") + (bleEnabled ? "wl. (Wi-Fi + BLE)" : "wyl. (tylko Wi-Fi)");
+    case 5: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko Wi-Fi)");
     case 4:
       return String("Zapis na karte SD: ") + (!sdOk ? "brak karty" : sdEnabled ? "wl. (" + String(sdLines) + " lin., " + String(sdFreeMB()) + " MB wolne)" : "wyl.");
     default: return "Kalibracja dotyku";

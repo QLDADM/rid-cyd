@@ -161,8 +161,10 @@ class OdidScanCallbacks : public NimBLEAdvertisedDeviceCallbacks {
 
 static volatile bool bleEnabled = true;  // false = tylko Wi-Fi (całe radio dla Wi-Fi, mniejszy pobór)
 
+static volatile bool scanHold = false;  // konfiguracja serwera BLE - stop() woła restartScan, który by wznowił skan
+
 static void restartScan(NimBLEScanResults) {
-  if (bleEnabled) NimBLEDevice::getScan()->start(0, restartScan, false);
+  if (bleEnabled && !scanHold) NimBLEDevice::getScan()->start(0, restartScan, false);
 }
 
 static void bleSetEnabled(bool on) {

@@ -10,7 +10,8 @@ wykrywacz dronów z kolorowym ekranem dotykowym:
   wykrywający aparatury FPV.
 - Pozwala oznaczać drony jako **swój / obcy**. Przy nowym obcym dronie piszczy i świeci na czerwono.
 - Zapisuje wykryte drony na kartę **microSD**.
-- Przez USB działa jako sensor agenta RID Decoder na komputerze (opcjonalnie).
+- Łączy się przez Bluetooth z [podglądem na telefonie](https://qldadm.github.io/rid-heltec/), także razem z płytką Heltec.
+- Działa jako sensor agenta RID Decoder na komputerze, kablem USB albo przez Bluetooth (opcjonalnie).
 
 Ten sam numer wersji mają firmware dla [Heltec V3](https://github.com/QLDADM/rid-heltec) i [M5StickC Plus2](https://github.com/QLDADM/rid-m5).
 
@@ -97,6 +98,18 @@ Pliki na karcie SD zostają.
   zapis na kartę SD, **Bluetooth wł./wył.** (tryb „tylko Wi-Fi”) i **kalibracja dotyku**.
 
 Dioda RGB świeci przy nowym dronie: czerwono przy obcym lub nieoznaczonym, zielono przy swoim.
+
+## Bluetooth: telefon i komputer
+
+CYD ogłasza się jako **RID-CYD-XXXX**. Połączenie wymaga sparowania 6-cyfrowym **PIN-em**, który widać
+w **Ustawieniach** (wiersz Bluetooth) i na górnym pasku w trakcie parowania. Naraz można połączyć do 3 urządzeń.
+
+- **Telefon:** strona https://qldadm.github.io/rid-heltec/ (Android: Chrome, iPhone: Bluefy), przycisk **Połącz**
+  albo **Dodaj płytkę**. Widać drony, stan płytki i oznaczenia, także razem z dronami z Heltec. CYD nie ma historii
+  lotów na telefonie, bo zapisuje ramki na kartę SD.
+- **Komputer:** agent RID Decoder łączy się z CYD przez Bluetooth, gdy nie jest podłączony kablem. Wystarczy raz
+  podłączyć płytkę kablem przy działającym agencie, żeby zapamiętał PIN.
+- Tryb **Bluetooth: wyl. (tylko Wi-Fi)** w Ustawieniach wyłącza też te połączenia.
 
 ## Analizator 2,4 GHz (moduł nRF24L01, opcjonalny)
 
