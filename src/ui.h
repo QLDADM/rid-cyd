@@ -212,8 +212,10 @@ static void drawDetail() {
     return;
   }
   detailLine(0, d->id[0] ? String(d->id) : String("bez ID"), C_ACCENT);
-  detailLine(1, String("Oznaczenie: ") + (tag == TAG_OWN ? "SWOJ" : tag == TAG_FOREIGN ? "OBCY" : "nieoznaczony"),
-             tagColor(tag));
+  String l1 = String("Oznaczenie: ") + (tag == TAG_OWN ? "SWOJ" : tag == TAG_FOREIGN ? "OBCY" : "nieoznaczony");
+  if (d->euClass >= 1 && d->euClass <= 7) l1 += "  C" + String(d->euClass - 1);
+  if (!isnan(d->vspeed)) l1 += "  pion " + String(d->vspeed, 1) + " m/s";
+  detailLine(1, l1, tagColor(tag));
   detailLine(2, "Status: " + String(STATUS[d->status & 3]) + "   RSSI " + String(d->rssi) + " dBm, " + ageText(d->lastMs) +
                     " temu");
   String l3 = "Wys: " + (isnan(d->height) ? String("-") : String(d->height, 0) + " m");
@@ -224,9 +226,11 @@ static void drawDetail() {
   detailLine(4, d->hasLoc ? "Dron: " + String(d->lat * 1e-7, 6) + ", " + String(d->lon * 1e-7, 6) : String("Dron: brak pozycji"));
   detailLine(5, d->hasOp ? "Operator: " + String(d->opLat * 1e-7, 6) + ", " + String(d->opLon * 1e-7, 6)
                          : String("Operator: brak pozycji"));
-  detailLine(6, (d->hasOp && d->hasLoc) ? "Odleglosc dron-operator: " + String((int)distM(d->lat, d->lon, d->opLat, d->opLon)) + " m"
-                                        : String(""));
-  detailLine(7, "Widziany od " + ageText(d->firstMs) + " temu", C_MUTED);
+  String l6 = d->opId[0] ? String("Nr operatora: ") + d->opId : String("Nr operatora: brak");
+  if (!isnan(d->maxHeight)) l6 += "  maks " + String(d->maxHeight, 0) + " m";
+  detailLine(6, l6);
+  detailLine(7, ((d->hasOp && d->hasLoc) ? "Dron-operator " + String((int)distM(d->lat, d->lon, d->opLat, d->opLon)) + " m, " : String("")) +
+                    "widziany od " + ageText(d->firstMs) + " temu", C_MUTED);
   drawButtonRow(LABELS, COLORS, 4);
 }
 

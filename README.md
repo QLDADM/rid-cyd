@@ -1,4 +1,4 @@
-# RID CYD: wykrywacz dronów Remote ID z ekranem dotykowym 2,8" (wersja 1.5)
+# RID CYD: wykrywacz dronów Remote ID z ekranem dotykowym 2,8" (wersja 1.6)
 
 Firmware dla płytki **ESP32-2432S028**, znanej jako „Cheap Yellow Display” (CYD). Zamienia ją w samodzielny
 wykrywacz dronów z kolorowym ekranem dotykowym:
@@ -40,7 +40,7 @@ Jeśli po wgraniu ekran zostaje biały albo kolory są dziwne, wgraj drugi plik.
 ### Krok 2. Pobierz plik firmware
 
 1. Wejdź na https://github.com/QLDADM/rid-cyd/releases.
-2. Przy najnowszej wersji (np. **v1.5**) w sekcji **Assets** kliknij plik dla swojej płytki.
+2. Przy najnowszej wersji (np. **v1.6**) w sekcji **Assets** kliknij plik dla swojej płytki.
 3. Plik trafi do folderu **Pobrane**. Nie otwieraj go i nie zmieniaj mu nazwy.
 
 ### Krok 3. Podłącz płytkę
@@ -90,7 +90,7 @@ Pliki na karcie SD zostają.
 - **Lista**: do 5 dronów na stronę (ponowne dotknięcie „Lista” pokazuje następną stronę). Kolorowy pasek oznacza
   swój (zielony), obcy (czerwony) albo nieoznaczony (żółty). Wiersz zawiera ID, RSSI, wysokość, prędkość,
   odległość do operatora i czas od ostatniego odbioru. Dotknięcie wiersza otwiera szczegóły.
-- **Szczegóły**: wszystkie dane drona i operatora oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
+- **Szczegóły**: dane drona i operatora, także klasa UE, prędkość pionowa, numer operatora i maksymalna wysokość, oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
 - **Radar**: drony (trójkąt w kierunku lotu) i operatorzy (kwadraty) w skali, z podziałką.
 - **Pasmo**: zajętość kanałów Wi-Fi 1–13 (ramki na sekundę, kolor = najsilniejszy sygnał) oraz analizator
   2,4 GHz, gdy podłączony jest moduł nRF24L01.
