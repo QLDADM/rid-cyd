@@ -11,7 +11,7 @@ wykrywacz dronów z kolorowym ekranem dotykowym:
 - Pozwala oznaczać drony jako **swój / obcy**. Przy nowym obcym dronie piszczy i świeci na czerwono.
 - Zapisuje wykryte drony na kartę **microSD**.
 - Łączy się przez Bluetooth z [podglądem na telefonie](https://qldadm.github.io/rid-heltec/), także razem z płytką Heltec.
-- Działa jako sensor agenta RID Decoder na komputerze, kablem USB albo przez Bluetooth (opcjonalnie).
+- Przez USB działa jako sensor agenta RID Decoder na komputerze (opcjonalnie).
 
 Ten sam numer wersji mają firmware dla [Heltec V3](https://github.com/QLDADM/rid-heltec) i [M5StickC Plus2](https://github.com/QLDADM/rid-m5).
 
@@ -107,8 +107,8 @@ w **Ustawieniach** (wiersz Bluetooth) i na górnym pasku w trakcie parowania. Na
 - **Telefon:** strona https://qldadm.github.io/rid-heltec/ (Android: Chrome, iPhone: Bluefy), przycisk **Połącz**
   albo **Dodaj płytkę**. Widać drony, stan płytki i oznaczenia, także razem z dronami z Heltec. CYD nie ma historii
   lotów na telefonie, bo zapisuje ramki na kartę SD.
-- **Komputer:** agent RID Decoder łączy się z CYD przez Bluetooth, gdy nie jest podłączony kablem. Wystarczy raz
-  podłączyć płytkę kablem przy działającym agencie, żeby zapamiętał PIN.
+- **Komputer:** agent RID Decoder łączy się z CYD kablem USB. Przez Bluetooth łączy się z komputerem tylko Heltec,
+  bo Windows nie paruje się z układem ESP32 w CYD.
 - Tryb **Bluetooth: wyl. (tylko Wi-Fi)** w Ustawieniach wyłącza też te połączenia.
 
 ## Analizator 2,4 GHz (moduł nRF24L01, opcjonalny)

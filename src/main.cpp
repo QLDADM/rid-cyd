@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <nvs.h>
 
 #define PIN_LED_R 4
 #define PIN_LED_G 16
@@ -177,13 +178,18 @@ static void printFrame(const Frame &f) {
   Serial.println(line);
 }
 
+static unsigned nvsFree() {  // wolne wpisy w pamięci ustawień (tam też trafiają parowania Bluetooth)
+  nvs_stats_t st;
+  return nvs_get_stats(nullptr, &st) == ESP_OK ? (unsigned)st.free_entries : 0;
+}
+
 static void printStatus() {
   Serial.printf("{\"status\":{\"dev\":\"cyd\",\"beacon\":%u,\"nan\":%u,\"ble\":%u,\"dropped\":%u,\"ch\":%u,"
                 "\"all_beacon\":%u,\"all_ble\":%u,\"ble_on\":%s,\"sd\":%s,\"sd_lines\":%u,\"sd_free_mb\":%u,\"boot\":%u,\"up\":%u,"
-                "\"wifi_drone\":%u,\"nrf24\":%s,\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s}}\n",
+                "\"wifi_drone\":%u,\"nrf24\":%s,\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s,\"bonds\":%d,\"nvs_free\":%u}}\n",
                 counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, currentChannel, allBeacon, allBle,
                 bleEnabled ? "true" : "false", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
-                wdSeen, nrfPresent ? "true" : "false", pcPin, pcName, hostBleOn ? "true" : "false");
+                wdSeen, nrfPresent ? "true" : "false", pcPin, pcName, hostBleOn ? "true" : "false", NimBLEDevice::getNumBonds(), nvsFree());
 }
 
 static void handleSerialCommand() {
@@ -219,6 +225,9 @@ static void handleSerialCommand() {
       printTags(false);
     } else if (!strcasecmp(buf, "TAGPEND")) {
       printTags(true);
+    } else if (!strcasecmp(buf, "BONDCLR")) {  // usunięcie sparowanych telefonów i komputerów
+      NimBLEDevice::deleteAllBonds();
+      Serial.println("{\"info\":\"sparowane urzadzenia usuniete\",\"dev\":\"cyd\"}");
     } else if (!strcasecmp(buf, "TAGPENDCLR")) {
       tagPendingCount = 0;
     } else if (!strcasecmp(buf, "TCAL")) {  // kalibracja dotyku na żądanie

@@ -2,7 +2,8 @@
 //  - telefon (NUS_TX / NUS_RX): strona podglądu dostaje linie JSON jak z Heltec:
 //      {"d":{...}} dron w zasięgu (co 1 s), {"s":{...}} stan płytki (co 5 s), {"tags":{...}} oznaczenia;
 //    polecenia: TAG <id> own|foreign|-, CH <n>, TIME <unix>, HIST (CYD nie ma historii - od razu hend 0).
-//  - komputer (PC_TX / PC_RX): agent RID Decoder dostaje ten sam protokół co po USB (hostout.h).
+//  - komputer (PC_TX / PC_RX): ten sam protokół co po USB (hostout.h). Uwaga: Windows nie paruje się
+//    z ESP32 w CYD (błąd po PIN-ie), więc agent łączy się z CYD kablem; kanał zostaje na przyszłość.
 // Parowanie z PIN-em (6 cyfr, losowany przy pierwszym starcie, widoczny w Ustawieniach i na górnym
 // pasku w trakcie parowania). Do 3 połączeń naraz: telefony i komputer.
 // Dołączany z main.cpp po oznaczeniach i sdlog.h, przed ui.h (NimBLE uruchamia radioBegin).
@@ -26,7 +27,8 @@ static uint32_t pcPin = 0;
 static char pcName[16];
 static uint32_t hostCmdMs = 0;  // ostatnie polecenie od agenta (USB albo BLE)
 static volatile bool phoneSubscribed = false, phoneWantTags = false, blePairing = false;
-static volatile bool bleUiDirty = false;  // zmiana z telefonu - pętla odświeża ekran
+static volatile bool bleUiDirty = false;
+static volatile bool pairScanHold = false;  // skanowanie dronów wstrzymane na czas parowania  // zmiana z telefonu - pętla odświeża ekran
 static char phoneCmd[64];
 static volatile bool phoneCmdReady = false;
 static volatile uint16_t bleConn[BLE_MAX_CONN] = {BLE_HS_CONN_HANDLE_NONE, BLE_HS_CONN_HANDLE_NONE,
@@ -67,7 +69,15 @@ static void pcOff() {
 }
 
 class PcServerCb : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer *, ble_gap_conn_desc *desc) override { bleConnSet(desc->conn_handle, pcSecure(desc)); }
+  void onConnect(NimBLEServer *, ble_gap_conn_desc *desc) override {
+    bool sec = pcSecure(desc);
+    bleConnSet(desc->conn_handle, sec);
+    if (!sec) {  // nowe połączenie: radio ESP32 dzielone z Wi-Fi i skanowaniem gubiło pakiety parowania
+      pairScanHold = scanHold = true;
+      NimBLEDevice::getScan()->stop();
+      esp_wifi_set_promiscuous(false);  // także nasłuch Wi-Fi: z nim parowanie z Windows stało po kilka sekund
+    }
+  }
   void onDisconnect(NimBLEServer *, ble_gap_conn_desc *desc) override {
     for (int i = 0; i < BLE_MAX_CONN; i++)
       if (bleConn[i] == desc->conn_handle) bleConn[i] = BLE_HS_CONN_HANDLE_NONE;
@@ -244,6 +254,9 @@ static void pcBleBegin(bool advertise) {
   NimBLEDevice::setMTU(247);
   NimBLEDevice::setSecurityAuth(true, true, true);  // bonding, MITM (PIN), Secure Connections
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+  // wymiana kluczy szyfrowania i tożsamości: bez klucza tożsamości Windows kończył parowanie błędem
+  NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+  NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
   NimBLEDevice::setSecurityPasskey(pcPin);
   pcServer = NimBLEDevice::createServer();
   pcServer->setCallbacks(new PcServerCb());
@@ -284,6 +297,16 @@ static void pcBleTick() {
   static uint32_t lastAdv = 0, lastDrones = 0, lastStatus = 0;
   uint32_t now = millis();
   for (int i = 0; i < 4; i++) hostBleDrain();
+  // po parowaniu (albo rozłączeniu) skanowanie dronów wraca po chwili
+  static uint32_t pairDoneMs = 0;
+  if (pairScanHold) {
+    if (blePairing) pairDoneMs = now;
+    else if (now - pairDoneMs > 3000) {
+      pairScanHold = scanHold = false;
+      esp_wifi_set_promiscuous(true);
+      if (bleEnabled) NimBLEDevice::getScan()->start(0, restartScan, false);
+    }
+  }
   if (phoneCmdReady) {
     phoneHandleCommand(phoneCmd);
     phoneCmdReady = false;
