@@ -3,9 +3,10 @@
 //   Lista: do 5 dronów na stronę (ponowne dotknięcie "Lista" = następna strona), dotknięcie = szczegóły
 //   Szczegóły: wszystkie dane + przyciski SWOJ / OBCY / BRAK / WSTECZ
 //   Radar: drony i operatorzy w skali (bez pozycji własnej - płytka nie ma GPS)
-//   Pasmo: zajętość kanałów Wi-Fi 1-13 oraz analizator 2,4 GHz, gdy podłączony jest moduł nRF24 (nrf24.h)
+//   Pasmo: zajętość kanałów Wi-Fi 2,4 GHz (z C5 nr 1, bez niego z radia CYD) i 5 GHz (z C5 nr 2), stan czujników
 //   Ustawienia: kanał Wi-Fi, jasność, odwrócenie kolorów, dźwięk, zapis SD, kalibracja dotyku
-// Dołączany z main.cpp po drones.h, radio.h, nrf24.h, sdlog.h, touch.h.
+//   Górny pasek: C1 / C2 = czujniki C5 (zielony działa, czerwony zamilkł, szary nie był podłączony)
+// Dołączany z main.cpp po drones.h, radio.h, sdlog.h, pcble.h, sensors.h, touch.h.
 #pragma once
 
 #include <TFT_eSPI.h>
@@ -94,13 +95,13 @@ static void drawTopBar(int count) {
   }
   tft.setTextColor(C_TEXT, C_PANEL);
   tft.setTextDatum(TR_DATUM);
-  if (nrfAlarm) {  // aparatura 2,4 GHz w pobliżu - widoczne na każdym ekranie
-    tft.setTextColor(C_FOREIGN, C_PANEL);
-    tft.setTextDatum(TL_DATUM);
-    tft.drawString("2,4G!", 150, 2, 2);
-    tft.setTextColor(C_TEXT, C_PANEL);
-    tft.setTextDatum(TR_DATUM);
+  tft.setTextDatum(TL_DATUM);
+  for (int s = 0; s < SENS_N; s++) {  // czujniki C5
+    tft.setTextColor(sensOnline(s) ? C_OWN : sens[s].lastMs ? C_FOREIGN : C_LINE, C_PANEL);
+    tft.drawString("C" + String(s + 1), 156 + s * 22, 2, 2);
   }
+  tft.setTextColor(C_TEXT, C_PANEL);
+  tft.setTextDatum(TR_DATUM);
   String right = String(bleEnabled ? (hostBleOn ? "PC " : "") : "WiFi ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + "CH" + String(currentChannel) +
                  (fixedChannel ? " " : "* ") + clockText();
   tft.drawString(right, 316, 2, 2);
@@ -113,7 +114,7 @@ static void drawTabs() {
   for (int i = 0; i < 4; i++) {
     bool sel = screen == TAB_SCREENS[i];
     tft.fillRect(i * 80, TAB_Y, 79, 30, sel ? C_ACCENT : C_PANEL);
-    tft.setTextColor(sel ? C_BG : (i == 2 && nrfAlarm ? C_FOREIGN : C_TEXT));
+    tft.setTextColor(sel ? C_BG : C_TEXT);
     tft.setTextDatum(MC_DATUM);
     tft.drawString(TABS[i], i * 80 + 40, TAB_Y + 15, 2);
   }
@@ -224,13 +225,13 @@ static void drawDetail() {
   if (d->track >= 0) l3 += "  kurs " + String(d->track);
   detailLine(3, l3);
   detailLine(4, d->hasLoc ? "Dron: " + String(d->lat * 1e-7, 6) + ", " + String(d->lon * 1e-7, 6) : String("Dron: brak pozycji"));
-  detailLine(5, d->hasOp ? "Operator: " + String(d->opLat * 1e-7, 6) + ", " + String(d->opLon * 1e-7, 6)
+  detailLine(5, d->hasOp ? "Operator: " + String(d->opLat * 1e-7, 6) + ", " + String(d->opLon * 1e-7, 6) +
+                               (d->hasLoc ? "  " + String((int)distM(d->lat, d->lon, d->opLat, d->opLon)) + " m" : String(""))
                          : String("Operator: brak pozycji"));
   String l6 = d->opId[0] ? String("Nr operatora: ") + d->opId : String("Nr operatora: brak");
   if (!isnan(d->maxHeight)) l6 += "  maks " + String(d->maxHeight, 0) + " m";
   detailLine(6, l6);
-  detailLine(7, ((d->hasOp && d->hasLoc) ? "Dron-operator " + String((int)distM(d->lat, d->lon, d->opLat, d->opLon)) + " m, " : String("")) +
-                    "widziany od " + ageText(d->firstMs) + " temu", C_MUTED);
+  detailLine(7, "Odbior: " + viaText(*d) + ", widziany od " + ageText(d->firstMs) + " temu", C_MUTED);
   drawButtonRow(LABELS, COLORS, 4);
 }
 
@@ -295,62 +296,75 @@ static void drawRadar() {
   tft.drawString("N^  kwadrat = operator", 316, TOP_H + 4, 1);
 }
 
-// ---------------------------------------------------------------- pasmo: Wi-Fi 1-13 i nRF24
+// ---------------------------------------------------------------- pasmo: Wi-Fi 2,4 GHz i 5 GHz
 
 static uint16_t rssiColor(int8_t r) { return r >= -55 ? C_FOREIGN : r >= -70 ? C_UNKNOWN : C_OWN; }
 
-static void drawBand() {
-  tft.fillRect(0, TOP_H, 320, TAB_Y - TOP_H, C_BG);
-  tft.setTextColor(C_TEXT, C_BG);
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString("Wi-Fi: ramki/s na kanal (kolor = najsilniejszy sygnal)", 4, TOP_H + 2, 1);
-  // słupki 1-13, skala logarytmiczna: 1 / 10 / 100 / 1000 ramek/s
-  const int base = TOP_H + 80, hMax = 56;
-  for (int c = 1; c <= 13; c++) {
-    int x = 8 + (c - 1) * 24;
-    uint16_t r = chRate[c];
-    int h = r ? min(hMax, (int)(log10f(r + 1) * hMax / 3)) : 0;
-    tft.drawRect(x, base - hMax, 20, hMax, C_LINE);
-    if (h) tft.fillRect(x + 1, base - h, 18, h, chRssi[c] > -128 ? rssiColor(chRssi[c]) : C_MUTED);
-    tft.setTextDatum(TC_DATUM);
-    tft.setTextColor(c == currentChannel ? C_ACCENT : C_MUTED, C_BG);
-    tft.drawString(String(c), x + 10, base + 2, 1);
-    if (r) {
-      tft.setTextColor(C_TEXT, C_BG);
-      tft.drawString(String(r), x + 10, base - hMax - 9, 1);
+// słupki kanałów, skala logarytmiczna 1 / 10 / 100 / 1000 ramek/s, kolor = najsilniejszy sygnał
+static void drawBandBars(int top, int hMax, const uint8_t *ch, const uint16_t *rate, const int8_t *peak, int n, int curCh) {
+  if (n <= 0) return;
+  int w = min(24, 312 / n), x0 = 4 + (312 - w * n) / 2, base = top + hMax;
+  tft.setTextDatum(TC_DATUM);
+  for (int i = 0; i < n; i++) {
+    int x = x0 + i * w;
+    int h = rate[i] ? min(hMax, (int)(log10f(rate[i] + 1) * hMax / 3)) : 0;
+    tft.drawRect(x, top, w - 2, hMax, C_LINE);
+    if (h) tft.fillRect(x + 1, base - h, w - 4, h, peak[i] > -128 ? rssiColor(peak[i]) : C_MUTED);
+    if (w >= 18 || i % 2 == 0) {  // przy wąskich słupkach (5 GHz) co drugi numer kanału
+      tft.setTextColor(ch[i] == curCh ? C_ACCENT : C_MUTED, C_BG);
+      tft.drawString(String(ch[i]), x + (w - 2) / 2, base + 2, 1);
     }
   }
-  int y0 = TOP_H + 96;
-  tft.drawFastHLine(0, y0 - 3, 320, C_LINE);
+}
+
+static void bandTitle(int y, const String &left, const String &right, uint16_t color = C_TEXT) {
+  tft.setTextColor(color, C_BG);
   tft.setTextDatum(TL_DATUM);
-  if (!nrfPresent) {
+  tft.drawString(left, 4, y, 1);
+  tft.setTextColor(C_MUTED, C_BG);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(right, 316, y, 1);
+}
+
+static String sensStatusText(int s) {
+  const SensorState &st = sens[s];
+  String t = "C5 nr " + String(s + 1) + (s ? " (5 GHz, GPIO27): " : " (2,4 GHz, GPIO35): ");
+  if (!st.lastMs) return t + "nie podlaczony";
+  if (!sensOnline(s)) return t + "cisza od " + ageText(st.lastMs);
+  return t + "kanal " + String(st.ch) + ", RID " + String(st.rid) + (st.bad ? ", bledy " + String(st.bad) : String(""));
+}
+
+static void drawBand() {
+  static const uint8_t CH24[13] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+  tft.fillRect(0, TOP_H, 320, TAB_Y - TOP_H, C_BG);
+  uint32_t now = millis();
+  // 2,4 GHz: z C5 nr 1 (antena zewnętrzna), bez niego z własnego radia CYD
+  if (bandFresh(band24) && band24.src) {
+    bandTitle(TOP_H + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), String((now - band24.ms) / 1000) + " s temu");
+    drawBandBars(TOP_H + 14, 46, band24.ch, band24.rate, band24.peak, band24.n, sens[band24.src - 1].ch);
+  } else {
+    bandTitle(TOP_H + 3, "Wi-Fi 2,4 GHz - radio CYD", "bez C5 nr 1");
+    drawBandBars(TOP_H + 14, 46, CH24, chRate + 1, chRssi + 1, 13, currentChannel);
+  }
+  // 5 GHz: tylko z C5 nr 2 (ESP32 w CYD nie ma 5 GHz)
+  int y5 = TOP_H + 76;
+  tft.drawFastHLine(0, y5 - 3, 320, C_LINE);
+  if (band5.ms) {
+    bool fresh = bandFresh(band5);
+    bandTitle(y5, "Wi-Fi 5 GHz - C5 nr " + String(band5.src), (fresh ? "" : "stare, ") + String((now - band5.ms) / 1000) + " s temu",
+              fresh ? C_TEXT : C_MUTED);
+    drawBandBars(y5 + 11, 46, band5.ch, band5.rate, band5.peak, band5.n, band5.src ? sens[band5.src - 1].ch : 0);
+  } else {
+    bandTitle(y5, "Wi-Fi 5 GHz", "");
     tft.setTextColor(C_MUTED, C_BG);
-    tft.drawString("Analizator 2,4 GHz: brak modulu nRF24", 4, y0, 2);
-    tft.drawString("CN1: GND-GND  3.3V-VCC i CE  IO22-SCK  IO27-MOSI", 4, y0 + 22, 1);
-    tft.drawString("P3:  IO35-MISO  IO21-CSN", 4, y0 + 34, 1);
-    tft.drawString("Po podlaczeniu wlaczy sie sam (sprawdzam co 5 s).", 4, y0 + 50, 1);
-    tft.drawString("Wi-Fi nie widzi aparatur ELRS/FrSky - nRF24 tak.", 4, y0 + 62, 1);
-    return;
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("Brak danych - C5 nr 2 podlacza sie do GPIO27", 160, y5 + 34, 2);
   }
-  tft.setTextColor(nrfAlarm ? C_FOREIGN : C_TEXT, C_BG);
-  tft.drawString(nrfAlarm ? "2,4 GHz: APARATURA? skoki" : "2,4 GHz (nRF24): spokoj", 4, y0, 2);
-  tft.setTextDatum(TR_DATUM);
-  tft.setTextColor(C_MUTED, C_BG);
-  tft.drawString("wynik " + String(nrfScore) + "/12  " + String(nrfDistinct) + " k.", 316, y0 + 3, 1);
-  // 126 kanałów po 2 px: 2400 MHz z lewej, 2525 z prawej; pionowe kreski = kanały Wi-Fi 1, 6, 11
-  const int gx = 34, gb = TAB_Y - 12, gh = 60;
-  tft.drawFastHLine(gx, gb, NRF_CH * 2, C_LINE);
-  for (int c : {1, 6, 11}) tft.drawFastVLine(gx + (12 + 5 * (c - 1)) * 2, gb - gh, gh, C_PANEL);
-  for (int k = 0; k < NRF_CH; k++) {
-    int h = nrfLevel[k] * gh / 100, hh = nrfHold[k] * gh / 100;
-    if (h) tft.fillRect(gx + k * 2, gb - h, 2, h, nrfLevel[k] > NRF_SPORADIC ? C_UNKNOWN : C_ACCENT);
-    if (hh > h) tft.drawPixel(gx + k * 2, gb - hh, C_TEXT);
-  }
-  tft.setTextColor(C_MUTED, C_BG);
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString("2400", 4, gb - 8, 1);
-  tft.setTextDatum(TR_DATUM);
-  tft.drawString("2525", 318, gb - 8, 1);
+  // stan czujników
+  int ys = TOP_H + 152;
+  tft.drawFastHLine(0, ys - 3, 320, C_LINE);
+  for (int s = 0; s < SENS_N; s++) bandTitle(ys + s * 12, sensStatusText(s), "", sensOnline(s) ? C_TEXT : C_MUTED);
+  bandTitle(ys + 24, "Slupek: ramki/s (log), kolor: najsilniejszy sygnal", "");
 }
 
 // ---------------------------------------------------------------- ustawienia
@@ -360,7 +374,7 @@ static void drawBand() {
 static String settingText(int i) {
   switch (i) {
     case 0: return String("Kanal Wi-Fi: ") + (fixedChannel ? "staly 6" : "skakanie");
-    case 1: return nrfPresent ? String("Jasnosc ekranu: stala (pin dla nRF24)") : "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
+    case 1: return "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
     case 2: return String("Odwroc kolory: ") + (invertColors ? "tak" : "nie");
     case 3: return String("Dzwiek (glosnik): ") + (soundOn ? "wl." : "wyl.");
     case 5: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko Wi-Fi)");

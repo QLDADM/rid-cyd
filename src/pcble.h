@@ -20,6 +20,8 @@
 #define PHONE_STATUS_MS 5000
 #define PHONE_DRONE_MAX_AGE_MS 60000
 
+static bool ownCsReplaced();  // sensors.h: pasmo 2,4 GHz przychodzi z czujnika C5 nr 1
+
 static NimBLEServer *pcServer = nullptr;
 static NimBLECharacteristic *pcTx = nullptr, *phoneTx = nullptr;
 static volatile uint16_t pcConn = BLE_HS_CONN_HANDLE_NONE;
@@ -325,7 +327,9 @@ static void pcBleTick() {
     if (bleEnabled) pcAdvertise(true);  // reklama także przy połączeniu: kilka telefonów i komputer naraz
   }
   static uint32_t lastChSent = 0;
-  if (chSummaryMs != lastChSent) {  // nowe podsumowanie kanałów Wi-Fi: panel pasma na stronach (telefon i przez agenta)
+  // nowe podsumowanie kanałów Wi-Fi: panel pasma na stronach (telefon i przez agenta);
+  // gdy działa C5 nr 1 (z anteną słyszy więcej), idą tylko jego dane (sensors.h)
+  if (chSummaryMs != lastChSent && !ownCsReplaced()) {
     lastChSent = chSummaryMs;
     char line[200];
     size_t n = snprintf(line, sizeof(line), "{\"cs\":{\"b\":\"2G4\",\"r\":[");

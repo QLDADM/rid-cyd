@@ -4,12 +4,13 @@
 // i pokazuje na ekranie dotykowym; zapisuje ramki na kartę microSD. Przez USB (921600 bod)
 // mówi tym samym protokołem co sensor Heltec, więc agent RID Decoder obsługuje go
 // automatycznie (na stronie: "wykryto: CYD").
-// Do tego drony Wi-Fi bez Remote ID (wifidrone.h), zajętość kanałów Wi-Fi i - gdy podłączony jest
-// moduł nRF24L01 - analizator pasma 2,4 GHz wykrywający aparatury FPV (nrf24.h, zakładka "Pasmo").
+// Do tego drony Wi-Fi bez Remote ID (wifidrone.h) i zajętość kanałów Wi-Fi (zakładka "Pasmo").
+// Centrala systemu w walizce: przyjmuje ramki z czujników ESP32-C5 przez przewody UART
+// (C5 nr 1 = Wi-Fi 2,4 GHz na GPIO35, C5 nr 2 = Wi-Fi 5 GHz na GPIO27, sensors.h).
 // Agent może się też łączyć przez Bluetooth zamiast kabla (pcble.h), z tym samym protokołem.
 //
 // Polecenia przez port szeregowy: ID, CH 0..13, TIME <unix>, PING, TAG <id> own|foreign|-,
-// TAGCLR, TAGS, TAGPEND, TAGPENDCLR, DUMP (pusty - zapis jest na karcie SD).
+// TAGCLR, TAGS, TAGPEND, TAGPENDCLR, DUMP (pusty - zapis jest na karcie SD), C5 <1|2> <linia> (test czujnika).
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -31,6 +32,7 @@ struct Frame {
   int8_t rssi;
   uint8_t mac[6];
   uint16_t len;
+  uint8_t src;  // 0 = własne radio CYD, 1 / 2 = czujnik C5 nr 1 / nr 2 (sensors.h)
   uint8_t data[256];
 };
 
@@ -43,6 +45,13 @@ static uint16_t bootId = 0;
 #define FW_VERSION "1.6"  // wspólny numer dla Heltec, CYD i M5 - nowy tylko przy dużych zmianach
 #include "drones.h"
 #include "wifidrone.h"
+
+// większy bufor odbioru USB: polecenie testowe "C5 ..." niesie linię czujnika (do ~600 znaków)
+static void usbBegin() {
+  Serial.setRxBufferSize(2048);
+  Serial.begin(921600);
+}
+
 #include "hostout.h"  // od tego miejsca Serial = USB + kanał PC przez BLE
 
 static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const uint8_t *data, size_t len);
@@ -101,6 +110,7 @@ static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const ui
   f.transport = transport;
   f.channel = transport == T_BLE ? 0 : currentChannel;
   f.rssi = rssi;
+  f.src = 0;
   memcpy(f.mac, mac, 6);
   f.len = len;
   memcpy(f.data, data, len);
@@ -108,9 +118,9 @@ static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const ui
   else dropped++;
 }
 
-#include "nrf24.h"
 #include "sdlog.h"
 #include "pcble.h"
+#include "sensors.h"
 #include "touch.h"
 #include "ui.h"
 
@@ -146,7 +156,7 @@ static void alertNewDrone(const DroneInfo &d) {
 }
 
 static void applyDisplay() {
-  if (!nrfPresent) ledcWrite(CH_BACKLIGHT, BRIGHT[brightIdx]);  // z nRF24 pin podświetlenia jest jego CSN
+  ledcWrite(CH_BACKLIGHT, BRIGHT[brightIdx]);
   tft.invertDisplay(invertColors);
 }
 
@@ -165,9 +175,9 @@ static void printFrame(const Frame &f) {
   static const char hex[] = "0123456789abcdef";
   static char line[700];
   int n = snprintf(line, sizeof(line),
-                   "{\"t\":\"%s\",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"rssi\":%d,\"ch\":%u,\"dev\":\"cyd\",\"d\":\"",
+                   "{\"t\":\"%s\",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"rssi\":%d,\"ch\":%u,\"dev\":\"cyd\",\"src\":\"%s\",\"d\":\"",
                    TRANSPORT_NAMES[f.transport], f.mac[0], f.mac[1], f.mac[2], f.mac[3], f.mac[4], f.mac[5], f.rssi,
-                   f.channel);
+                   f.channel, srcName(f.src));
   for (size_t i = 0; i < f.len && n < (int)sizeof(line) - 4; i++) {
     line[n++] = hex[f.data[i] >> 4];
     line[n++] = hex[f.data[i] & 0x0F];
@@ -186,14 +196,16 @@ static unsigned nvsFree() {  // wolne wpisy w pamięci ustawień (tam też trafi
 static void printStatus() {
   Serial.printf("{\"status\":{\"dev\":\"cyd\",\"beacon\":%u,\"nan\":%u,\"ble\":%u,\"dropped\":%u,\"ch\":%u,"
                 "\"all_beacon\":%u,\"all_ble\":%u,\"ble_on\":%s,\"sd\":%s,\"sd_lines\":%u,\"sd_free_mb\":%u,\"boot\":%u,\"up\":%u,"
-                "\"wifi_drone\":%u,\"nrf24\":%s,\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s,\"bonds\":%d,\"nvs_free\":%u}}\n",
+                "\"wifi_drone\":%u,\"c5\":[%s,%s],\"c5_rid\":[%u,%u],\"c5_bad\":[%u,%u],\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s,"
+                "\"bonds\":%d,\"nvs_free\":%u,\"heap\":%u}}\n",
                 counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, currentChannel, allBeacon, allBle,
                 bleEnabled ? "true" : "false", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
-                wdSeen, nrfPresent ? "true" : "false", pcPin, pcName, hostBleOn ? "true" : "false", NimBLEDevice::getNumBonds(), nvsFree());
+                wdSeen, sensOnline(0) ? "true" : "false", sensOnline(1) ? "true" : "false", sens[0].rid, sens[1].rid, sens[0].bad,
+                sens[1].bad, pcPin, pcName, hostBleOn ? "true" : "false", NimBLEDevice::getNumBonds(), nvsFree(), ESP.getFreeHeap());
 }
 
 static void handleSerialCommand() {
-  static char buf[64];
+  static char buf[SENS_LINE + 8];  // polecenie C5 niesie całą linię czujnika
   static size_t n = 0;
   while (Serial.available()) {
     char c = Serial.read();
@@ -247,6 +259,8 @@ static void handleSerialCommand() {
     } else if (!strcasecmp(buf, "DUMP")) {  // pamięć wewnętrzna nie jest używana - zapis na SD
       Serial.printf("{\"dump_begin\":{\"records\":0,\"boot\":%u,\"up\":%u,\"fs\":false,\"boots\":{}}}\n", bootId, millis() / 1000);
       Serial.println("{\"dump_end\":{\"records\":0}}");
+    } else if (!strncasecmp(buf, "C5 ", 3) && (buf[3] == '1' || buf[3] == '2') && buf[4] == ' ') {
+      sensLine(buf[3] - '1', buf + 5);  // test bez czujnika: linia jak z przewodu UART
     } else if (n >= 3 && !strncasecmp(buf, "CH", 2)) {
       int ch = atoi(buf + 2);
       if (ch >= 0 && ch <= 13) fixedChannel = ch;
@@ -315,7 +329,7 @@ static void onTap(int x, int y) {
   } else if (screen == SCR_SETTINGS) {
     int i = (y - TOP_H - 3) / SET_ROW_H;
     if (i == 0) fixedChannel = fixedChannel ? 0 : 6;
-    else if (i == 1 && !nrfPresent) brightIdx = (brightIdx + 1) % sizeof(BRIGHT);
+    else if (i == 1) brightIdx = (brightIdx + 1) % sizeof(BRIGHT);
     else if (i == 2) invertColors = !invertColors;
     else if (i == 3) soundOn = !soundOn;
     else if (i == 4 && sdOk) {
@@ -363,7 +377,7 @@ static void render() {
 }
 
 void setup() {
-  Serial.begin(921600);
+  usbBegin();
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);  // czas polski z automatyczną zmianą lato/zima
   tzset();
   pinMode(PIN_LED_R, OUTPUT);
@@ -406,7 +420,7 @@ void setup() {
   frameQueue = xQueueCreate(32, sizeof(Frame));
   radioBegin();
   pcBleBegin(bleEnabled);
-  nrfBegin();  // moduł nRF24 - wykrywany sam, także po podłączeniu w trakcie pracy
+  sensorsBegin();  // czujniki C5 na GPIO35 / GPIO27 - działają same po podłączeniu przewodów
   Serial.println("{\"info\":\"RID sensor CYD gotowy\",\"dev\":\"cyd\"}");
 }
 
@@ -417,6 +431,7 @@ void loop() {
     printFrame(f);
     sdLog(f);
     DroneInfo *d = parseFrame(f);
+    if (d) droneNoteVia(*d, f.src);
     if (d && !d->shown && (d->id[0] || millis() - d->firstMs > 5000)) {  // chwila na Basic ID
       d->shown = true;
       alertNewDrone(*d);
@@ -431,29 +446,8 @@ void loop() {
     }
     wdPrint(Serial, *d);
   }
-  static bool nrfWas = false;
-  if (nrfPresent != nrfWas) {
-    nrfWas = nrfPresent;
-    Serial.printf("{\"info\":\"modul nRF24 %s\",\"dev\":\"cyd\"}\n", nrfPresent ? "wykryty - analizator 2,4 GHz" : "odlaczony");
-    uiDirty = true;
-  }
-  if (nrfWindowReady) {  // okno 1 s analizatora 2,4 GHz -> agent (/api/rf, jak detektor UV-K5)
-    nrfWindowReady = false;
-    Serial.printf("{\"rf\":{\"band\":\"2G4\",\"score\":%u,\"distinct\":%u,\"peak_dbm\":-64,\"alarm\":%s},\"dev\":\"cyd\"}\n",
-                  nrfScore, nrfDistinct, nrfAlarm ? "true" : "false");
-    if (screen == SCR_BAND) uiDirty = true;
-  }
-  if (nrfAlarmEdge) {  // nowa aktywność aparatury 2,4 GHz
-    nrfAlarmEdge = false;
-    led(true, false, false);
-    ledUntil = millis() + 5000;
-    beep(1200, 120);
-    delay(60);
-    beep(1200, 120);
-    delay(60);
-    beep(1200, 120);
-    uiDirty = true;
-  }
+  uint8_t sensChange = sensorsTick();
+  if ((sensChange & SENS_STATE) || ((sensChange & SENS_NEW_BAND) && screen == SCR_BAND)) uiDirty = true;
   chSummaryTick();
   pcBleTick();
   static bool pairWas = false;

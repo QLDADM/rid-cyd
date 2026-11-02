@@ -1,7 +1,8 @@
 // Zapis wykrytych ramek Remote ID na kartę microSD (VSPI: SCK 18, MISO 19, MOSI 23, CS 5).
 // Plik dzienny /rid/rid-RRRRMMDD.jsonl (gdy znany czas) albo /rid/boot-NNNN.jsonl.
 // Jedna linia JSON na ramkę, najwyżej 1 ramka danego typu z jednego MAC na SD_MIN_INTERVAL_MS:
-//   {"t":<unix|0>,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"d":"<hex>"}
+//   {"t":<unix|0>,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"ch":6,"src":"cyd","d":"<hex>"}
+//   src: cyd = własne radio, c5-1 / c5-2 = czujnik C5 nr 1 / nr 2
 // Dołączany z main.cpp po drones.h.
 #pragma once
 
@@ -67,9 +68,9 @@ static void sdLog(const Frame &f) {
   sdSeen[slot].ms = now;
   if (!sdOpen()) return;
   static const char hex[] = "0123456789abcdef";
-  sdFile.printf("{\"t\":%u,\"boot\":%u,\"up\":%u,\"tr\":\"%s\",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"rssi\":%d,\"d\":\"",
+  sdFile.printf("{\"t\":%u,\"boot\":%u,\"up\":%u,\"tr\":\"%s\",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"rssi\":%d,\"ch\":%u,\"src\":\"%s\",\"d\":\"",
                 unixNow(), sdBoot, millis() / 1000, TRANSPORT_NAMES[f.transport], f.mac[0], f.mac[1], f.mac[2],
-                f.mac[3], f.mac[4], f.mac[5], f.rssi);
+                f.mac[3], f.mac[4], f.mac[5], f.rssi, f.channel, f.src == 1 ? "c5-1" : f.src == 2 ? "c5-2" : "cyd");
   for (size_t i = 0; i < f.len; i++) {
     sdFile.write(hex[f.data[i] >> 4]);
     sdFile.write(hex[f.data[i] & 0x0F]);

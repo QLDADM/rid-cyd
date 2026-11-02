@@ -6,8 +6,9 @@ wykrywacz dronów z kolorowym ekranem dotykowym:
 - Odbiera Remote ID przez **Wi-Fi Beacon**, **Wi-Fi NAN** i **BLE 4**. BLE 5 Long Range nie działa, bo ESP32 na CYD ma Bluetooth 4.2.
 - Pokazuje **listę dronów**, **szczegóły** (pozycja, wysokość, prędkość, operator) i **radar**.
 - Wykrywa też **drony Wi-Fi bez Remote ID** (DJI Tello, Parrot, zabawkowe drony z kamerą Wi-Fi) po nazwie sieci albo producencie.
-- Ma zakładkę **Pasmo** z zajętością kanałów Wi-Fi i, z dokładanym modułem nRF24L01, analizator 2,4 GHz
-  wykrywający aparatury FPV.
+- Ma zakładkę **Pasmo** z zajętością kanałów Wi-Fi 2,4 GHz, a z czujnikiem ESP32-C5 także 5 GHz.
+- Może być **centralą systemu w walizce**: przyjmuje wykrycia z dwóch czujników ESP32-C5 z antenami
+  (2,4 i 5 GHz) przez przewody. Opis niżej.
 - Pozwala oznaczać drony jako **swój / obcy**. Przy nowym obcym dronie piszczy i świeci na czerwono.
 - Zapisuje wykryte drony na kartę **microSD**.
 - Łączy się przez Bluetooth z [podglądem na telefonie](https://qldadm.github.io/dron-detector/), także razem z płytką Heltec.
@@ -90,10 +91,12 @@ Pliki na karcie SD zostają.
 - **Lista**: do 5 dronów na stronę (ponowne dotknięcie „Lista” pokazuje następną stronę). Kolorowy pasek oznacza
   swój (zielony), obcy (czerwony) albo nieoznaczony (żółty). Wiersz zawiera ID, RSSI, wysokość, prędkość,
   odległość do operatora i czas od ostatniego odbioru. Dotknięcie wiersza otwiera szczegóły.
-- **Szczegóły**: dane drona i operatora, także klasa UE, prędkość pionowa, numer operatora i maksymalna wysokość, oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
+- **Szczegóły**: dane drona i operatora, także klasa UE, prędkość pionowa, numer operatora, maksymalna wysokość,
+  odległość dron–operator i **Odbiór** (CYD / C5-1 / C5-2), oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
 - **Radar**: drony (trójkąt w kierunku lotu) i operatorzy (kwadraty) w skali, z podziałką.
-- **Pasmo**: zajętość kanałów Wi-Fi 1–13 (ramki na sekundę, kolor = najsilniejszy sygnał) oraz analizator
-  2,4 GHz, gdy podłączony jest moduł nRF24L01.
+- **Pasmo**: zajętość kanałów Wi-Fi 2,4 GHz i 5 GHz (ramki na sekundę, kolor = najsilniejszy sygnał) oraz stan
+  czujników C5.
+- **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
 - **Ustawienia**: kanał Wi-Fi (skakanie albo stały 6), jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
   zapis na kartę SD, **Bluetooth wł./wył.** (tryb „tylko Wi-Fi”) i **kalibracja dotyku**.
 
@@ -111,33 +114,41 @@ w **Ustawieniach** (wiersz Bluetooth) i na górnym pasku w trakcie parowania. Na
   bo Windows nie paruje się z układem ESP32 w CYD.
 - Tryb **Bluetooth: wyl. (tylko Wi-Fi)** w Ustawieniach wyłącza też te połączenia.
 
-## Analizator 2,4 GHz (moduł nRF24L01, opcjonalny)
+## Czujniki ESP32-C5: CYD jako centrala systemu w walizce
 
-Wbudowane Wi-Fi widzi tylko pakiety Wi-Fi. Moduł nRF24L01 widzi każdy silny sygnał w paśmie 2400–2525 MHz,
-także aparatury FPV 2,4 GHz (ELRS 2.4, FrSky, Flysky), które nie są Wi-Fi i nie nadają Remote ID.
+CYD przyjmuje ramki z dwóch czujników **ESP32-C5** z zewnętrznymi antenami. Każdy czujnik słucha jednego pasma
+i wysyła wykrycia przewodem (tylko TX czujnika → RX CYD, 115200 bod, 3,3 V):
 
-| nRF24L01 | CYD |
-|---|---|
-| GND | CN1 GND |
-| VCC i CE (oba) | CN1 3.3V (nie VIN, bo 5 V uszkodzi moduł) |
-| SCK | CN1 IO22 |
-| MOSI | CN1 IO27 |
-| MISO | P3 IO35 |
-| CSN | P3 IO21 |
-| IRQ | niepodłączone |
+| Czujnik | Pasmo | C5 | CYD |
+|---|---|---|---|
+| **C5 nr 1** | Wi-Fi 2,4 GHz | GPIO9 (TX) | **P3 IO35** |
+| **C5 nr 2** | Wi-Fi 5 GHz | GPIO9 (TX) | **CN1 IO27** |
+| oba | | G | GND (wspólna masa obowiązkowa) |
 
-- Płytka sprawdza moduł przy starcie i co 5 s, więc po podłączeniu działa bez wgrywania.
-- IO21 to także pin podświetlenia ekranu. Przy podłączonym module podświetlenie jest stale pełne.
-- Moduł wykrywa sygnał od około −64 dBm, czyli bliskie nadajniki (zwykle kilkadziesiąt metrów).
-- Alarm (trzy tony, czerwona dioda, „2,4G!” na górze ekranu) włącza się, gdy płytka widzi krótkie impulsy
-  skaczące po kanałach poza sieciami Wi-Fi.
-- Progi są dobrane teoretycznie i po pierwszych próbach z aparaturą może być potrzebne ich dostrojenie.
+Każdy czujnik ma osobne zasilanie USB. Pinów 5 V nie łączyć.
+
+- Ramki Remote ID z czujników trafiają do tego samego dekodera co z radia CYD: lista, alarmy, oznaczenia, karta SD,
+  telefon i agent działają tak samo. W szczegółach drona wiersz **Odbiór** mówi, kto go słyszał (np. `CYD+C5-1`).
+- Na górnym pasku **C1** i **C2**: zielony = czujnik działa, czerwony = zamilkł, szary = nie był podłączony.
+- Zakładka **Pasmo**: 2,4 GHz z C5 nr 1 (bez niego z radia CYD), 5 GHz z C5 nr 2 i stan obu czujników
+  (kanał, liczba ramek Remote ID, błędne linie). Te same dane idą na tablet i do agenta (panele pasm na stronach).
+- Format linii czujnika (z sumą kontrolną jak w NMEA) jest opisany w `src/sensors.h`.
+- Obsługa modułu nRF24L01 została usunięta: piny IO27 i IO35 służą teraz czujnikom, a regulacja jasności ekranu działa zawsze.
+
+**Test bez czujników:** polecenie USB `C5 <1|2> <linia>` podaje linię tak, jakby przyszła przewodem.
+Skrypt `tools/c5_sim.py` udaje oba czujniki (drony Remote ID na 2,4 i 5 GHz, dron Wi-Fi, pasma, stan):
+
+```powershell
+pip install pyserial
+python tools/c5_sim.py --port COM5      # agent RID Decoder musi być wtedy zamknięty
+```
 
 ## Karta SD
 
 Pliki `/rid/rid-RRRRMMDD.jsonl` (gdy płytka zna czas) albo `/rid/boot-NNNN.jsonl`. Jedna linia na ramkę,
 najwyżej 1 ramka danego typu z drona na 3 s:
-`{"t":unix,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"d":"<hex>"}`.
+`{"t":unix,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"ch":6,"src":"cyd","d":"<hex>"}`
+(`src`: `cyd` = radio płytki, `c5-1` / `c5-2` = czujnik).
 
 ---
 
@@ -162,6 +173,7 @@ Wgranie przez PlatformIO nie kasuje ustawień.
 
 ### Protokół USB (921600 bod)
 
-Linie JSON: ramki `{"t":...,"dev":"cyd"}`, status, drony Wi-Fi `{"wd":{...}}`, analizator `{"rf":{"band":"2G4",...}}`.
+Linie JSON: ramki `{"t":...,"dev":"cyd","src":"cyd|c5-1|c5-2"}`, status (z polami `c5`, `c5_rid`, `c5_bad`),
+drony Wi-Fi `{"wd":{...}}`, pasma `{"cs":{"b":"2G4|5G","src":..,"c":[kanały],"r":[ramek/s],"p":[dBm]}}`.
 Polecenia: `ID`, `CH <n>`, `TIME <unix>`, `TAG <id> own|foreign|-`, `TAGS`, `TAGCLR`, `TAGPEND`, `PING`,
-`TRAW` (surowe odczyty dotyku przez 20 s).
+`TRAW` (surowe odczyty dotyku przez 20 s), `C5 <1|2> <linia>` (test czujnika bez płytki C5).
