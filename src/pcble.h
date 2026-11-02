@@ -324,6 +324,18 @@ static void pcBleTick() {
     lastAdv = now;
     if (bleEnabled) pcAdvertise(true);  // reklama także przy połączeniu: kilka telefonów i komputer naraz
   }
+  static uint32_t lastChSent = 0;
+  if (chSummaryMs != lastChSent) {  // nowe podsumowanie kanałów Wi-Fi: panel pasma na stronach (telefon i przez agenta)
+    lastChSent = chSummaryMs;
+    char line[200];
+    size_t n = snprintf(line, sizeof(line), "{\"cs\":{\"b\":\"2G4\",\"r\":[");
+    for (int c = 1; c <= 13; c++) n += snprintf(line + n, sizeof(line) - n, "%s%u", c > 1 ? "," : "", chRate[c]);
+    n += snprintf(line + n, sizeof(line) - n, "],\"p\":[");
+    for (int c = 1; c <= 13; c++) n += snprintf(line + n, sizeof(line) - n, "%s%d", c > 1 ? "," : "", chRssi[c]);
+    snprintf(line + n, sizeof(line) - n, "]}}\n");
+    Serial.print(line);
+    if (phoneSubscribed) phoneSend(line);
+  }
   if (!phoneSubscribed) return;
   if (phoneWantTags) {
     phoneWantTags = false;
