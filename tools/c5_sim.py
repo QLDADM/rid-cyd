@@ -6,12 +6,14 @@ sumy kontrolne, dekodowanie Remote ID, drony Wi-Fi, pasma 2,4 i 5 GHz, stan czuj
 na ekranie, przekazanie na tablet i do agenta.
 
     pip install pyserial
-    python tools/c5_sim.py --port COM5            (agent RID Decoder musi być wtedy zamknięty)
+    python tools/c5_sim.py                        (port CYD szukany sam; agent RID Decoder musi być zamknięty)
+    python tools/c5_sim.py --port COM5 --lat 50.06 --lon 19.94 --time 600
+    albo dwuklik na tools/test_c5.bat (Windows)
 
-Co wysyła:
-  C5 nr 1 (2,4 GHz): dron Remote ID przez Wi-Fi Beacon (kanał 6), dron Wi-Fi bez RID (TELLO),
-                     $HB co 5 s, $CS 2,4 GHz co 10 s
-  C5 nr 2 (5 GHz):   dron Remote ID przez Wi-Fi NAN (kanał 149), $HB, $CS 5 GHz
+Co wysyła (drony wokół --lat/--lon, lista DRONES):
+  C5 nr 1 (2,4 GHz): drony Remote ID przez Wi-Fi Beacon - 100 m na NE (kanał 6) i 3 km na WNW (kanał 1),
+                     dron Wi-Fi bez RID (TELLO, kanał 11), $HB co 5 s, $CS 2,4 GHz co 10 s
+  C5 nr 2 (5 GHz):   dron Remote ID przez Wi-Fi NAN - 500 m na SSW (kanał 44), $HB, $CS 5 GHz
   co 30 s jedną linię z błędną sumą - CYD ma ją odrzucić (licznik "bledy" w zakładce Pasmo).
 """
 from __future__ import annotations
@@ -68,6 +70,23 @@ def pack(msgs: list[bytes]) -> bytes:
     return bytes([0xF2, 25, len(msgs)]) + b"".join(msgs)
 
 
+# ---- testowe drony: odległość [m] i kierunek [°] od punktu, mały okrąg wokół tego miejsca
+DRONES = [
+    dict(id="C5TEST-100M", dist=100, brg=45, orbit=20, w=0.08, h=40, node=1, tr="WIFI", ch=6, band="2G4",
+         mac="60:60:1f:c5:01:00", rssi=-50),
+    dict(id="C5TEST-500M", dist=500, brg=200, orbit=60, w=-0.05, h=90, node=2, tr="NAN", ch=44, band="5G",
+         mac="9c:00:00:c5:05:00", rssi=-66),
+    dict(id="C5TEST-3KM", dist=3000, brg=300, orbit=150, w=0.03, h=120, node=1, tr="WIFI", ch=1, band="2G4",
+         mac="60:60:1f:c5:30:00", rssi=-82),
+]
+
+
+def offset(lat0: float, dist: float, brg: float) -> tuple[float, float]:
+    """Przesunięcie (dlat, dlon) w stopniach o dist metrów w kierunku brg."""
+    r = math.radians(brg)
+    return dist * math.cos(r) / 111320, dist * math.sin(r) / (111320 * math.cos(math.radians(lat0)))
+
+
 # ---- linie czujnika (format z PROJEKT_wykrywanie_dronow.md)
 def nmea(body: str) -> str:
     x = 0
@@ -80,14 +99,33 @@ def ssid_enc(s: str) -> str:
     return "".join(c if 0x21 <= ord(c) <= 0x7E and c not in ",*%" else f"%{ord(c):02X}" for c in s)
 
 
+def find_cyd_port() -> str | None:
+    """Port CYD: układ USB CH340 (VID 1A86). Przy kilku albo żadnym - lista portów i podpowiedź --port."""
+    from serial.tools import list_ports
+    ports = list(list_ports.comports())
+    ch340 = [p for p in ports if p.vid == 0x1A86 or "CH340" in (p.description or "")]
+    if len(ch340) == 1:
+        print(f"CYD na porcie {ch340[0].device} ({ch340[0].description})")
+        return ch340[0].device
+    print("Nie wiem, który port to CYD. Porty w komputerze:")
+    for p in ports:
+        print(f"  {p.device}: {p.description}")
+    print("Uruchom ponownie z numerem portu, np.:  python c5_sim.py --port COM11")
+    return None
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--port", required=True, help="port CYD, np. COM5")
-    p.add_argument("--lat", type=float, default=52.392)
-    p.add_argument("--lon", type=float, default=20.783)
+    p.add_argument("--port", help="port CYD, np. COM5 (bez podania: szukany sam - układ USB CH340)")
+    p.add_argument("--lat", type=float, default=49.9180, help="środek testu (domyślnie rynek w Nowym Wiśniczu)")
+    p.add_argument("--lon", type=float, default=20.4683)
     p.add_argument("--time", type=int, default=0, help="ile sekund (0 = do Ctrl+C)")
     a = p.parse_args()
 
+    if not a.port:
+        a.port = find_cyd_port()
+        if not a.port:
+            return 1
     s = serial.Serial()
     s.port, s.baudrate, s.timeout = a.port, 921600, 0.2
     s.dtr = False  # bez resetu płytki przy otwarciu (jak agent) - liczniki CYD zostają
@@ -122,29 +160,29 @@ def main():
         while not stop.is_set():
             t = time.time() - t0
             up = int(t * 1000)
-            # dron 1: Wi-Fi Beacon 2,4 GHz z C5 nr 1, krąży 300 m od punktu
-            ang = 0.05 * t
-            lat1 = a.lat + 300 * math.cos(ang) / 111320
-            lon1 = a.lon + 300 * math.sin(ang) / (111320 * math.cos(math.radians(a.lat)))
-            msgs = [basic_id("C5TEST-24-0001"), location(lat1, lon1, 60 + 10 * math.sin(t / 8), 15, (math.degrees(ang) + 90) % 360),
-                    system(a.lat - 0.001, a.lon - 0.001), operator_id("POLc5test0000001-abc")]
-            ie = bytes([0xFA, 0x0B, 0xBC, 0x0D, n & 0xFF]) + pack(msgs)
-            send(1, f"RID,1,{up},WIFI,60:60:1f:c5:00:01,{-58 - random.randint(0, 6)},6,2G4,{ie.hex()}")
-            # dron 2: NAN 5 GHz z C5 nr 2, 700 m na północny wschód
-            ang2 = -0.03 * t
-            lat2 = a.lat + 0.005 + 200 * math.cos(ang2) / 111320
-            lon2 = a.lon + 0.004 + 200 * math.sin(ang2) / (111320 * math.cos(math.radians(a.lat)))
-            msgs2 = [basic_id("C5TEST-5G-0002"), location(lat2, lon2, 110, 9, (math.degrees(ang2) - 90) % 360),
-                     system(a.lat + 0.004, a.lon + 0.003)]
-            si = bytes([n & 0xFF]) + pack(msgs2)
-            send(2, f"RID,2,{up},NAN,9c:00:00:c5:00:02,{-70 - random.randint(0, 6)},149,5G,{si.hex()}")
+            # drony Remote ID w różnych odległościach i kierunkach od punktu (DRONES), każdy krąży po małym okręgu
+            for i, dr in enumerate(DRONES):
+                dlat, dlon = offset(a.lat, dr["dist"], dr["brg"])
+                ang = dr["w"] * t + i
+                clat, clon = offset(a.lat, dr["orbit"], math.degrees(ang))
+                lat, lon = a.lat + dlat + clat, a.lon + dlon + clon
+                olat, olon = offset(a.lat, 80, dr["brg"] + 150)  # operator ok. 80 m od drona
+                track = (math.degrees(ang) + (90 if dr["w"] > 0 else -90)) % 360
+                msgs = [basic_id(dr["id"]), location(lat, lon, dr["h"] + 5 * math.sin(t / 8 + i), abs(dr["w"]) * dr["orbit"], track),
+                        system(a.lat + dlat + olat, a.lon + dlon + olon), operator_id(f"POLc5test{i:07d}-abc")]
+                rssi = dr["rssi"] - random.randint(0, 6)
+                if dr["tr"] == "WIFI":
+                    data = bytes([0xFA, 0x0B, 0xBC, 0x0D, n & 0xFF]) + pack(msgs)
+                else:  # NAN: licznik + Message Pack
+                    data = bytes([n & 0xFF]) + pack(msgs)
+                send(dr["node"], f"RID,{dr['node']},{up},{dr['tr']},{dr['mac']},{rssi},{dr['ch']},{dr['band']},{data.hex()}")
             # dron Wi-Fi bez Remote ID (nazwa sieci z przecinkiem sprawdza kodowanie %XX)
             if n % 3 == 0:
                 send(1, f"AP,1,{up},60:60:1f:aa:bb:cc,{-50 - random.randint(0, 5)},11,2G4,{ssid_enc('TELLO-5A3F2B,test')}")
             if t - last_hb >= 5:
                 last_hb = t
                 send(1, f"HB,1,{up},6,2G4,{n},0.1")
-                send(2, f"HB,2,{up},149,5G,{n},0.1")
+                send(2, f"HB,2,{up},44,5G,{n},0.1")
             if t - last_cs >= 10:
                 last_cs = t
                 cs1 = ";".join(f"{c}:{random.choice([0, 3, 12, 40, 150])}:{random.randint(-90, -45)}" for c in range(1, 14))

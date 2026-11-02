@@ -140,9 +140,14 @@ Każdy czujnik ma osobne zasilanie USB. Pinów 5 V nie łączyć.
 **Test bez czujników:** polecenie USB `C5 <1|2> <linia>` podaje linię tak, jakby przyszła przewodem.
 Skrypt `tools/c5_sim.py` udaje oba czujniki (drony Remote ID na 2,4 i 5 GHz, dron Wi-Fi, pasma, stan):
 
+Najprościej: zamknij agenta RID Decoder i kliknij dwukrotnie `tools/test_c5.bat`. Skrypt sam znajdzie port CYD
+(układ CH340), w razie potrzeby doinstaluje `pyserial` i wyśle drony testowe wokół rynku w Nowym Wiśniczu:
+100 m na NE (C5 nr 1, kanał 6), 500 m na SSW (C5 nr 2, 5 GHz, kanał 44), 3 km na WNW (C5 nr 1, kanał 1)
+i drona Wi-Fi TELLO (kanał 11). Ctrl+C kończy test. Z wiersza poleceń:
+
 ```powershell
-pip install pyserial
-python tools/c5_sim.py --port COM5      # agent RID Decoder musi być wtedy zamknięty
+python tools/c5_sim.py                                   # port szukany sam
+python tools/c5_sim.py --port COM11 --lat 50.06 --lon 19.94 --time 600   # inny port, inne miejsce, 10 min
 ```
 
 ## Karta SD
