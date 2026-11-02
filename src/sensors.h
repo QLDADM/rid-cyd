@@ -226,17 +226,34 @@ static const char *srcName(uint8_t src) { return src == 1 ? "c5-1" : src == 2 ? 
 // pcble.h: własne pasmo 2,4 GHz nie jest wysyłane, gdy dane daje C5 nr 1
 static bool ownCsReplaced() { return bandFresh(band24) && band24.src; }
 
-// skąd jest dron: bit 0 = radio CYD, bit 1 = C5 nr 1, bit 2 = C5 nr 2 (zerowane, gdy slot zajmie nowy dron)
-static uint8_t droneVia[MAX_DRONES];
+// skąd jest dron: bit 0 = radio CYD, bit 1 = C5 nr 1, bit 2 = C5 nr 2, oraz kanał Wi-Fi ostatniej ramki
+// (0 = BLE / brak); zerowane, gdy slot zajmie nowy dron
+static uint8_t droneVia[MAX_DRONES], droneCh[MAX_DRONES];
 static uint32_t droneViaFirst[MAX_DRONES];
 
-static void droneNoteVia(const DroneInfo &d, uint8_t src) {
+static void droneNoteVia(const DroneInfo &d, uint8_t src, uint8_t ch) {
   int i = &d - drones;
   if (droneViaFirst[i] != d.firstMs) {
     droneViaFirst[i] = d.firstMs;
-    droneVia[i] = 0;
+    droneVia[i] = droneCh[i] = 0;
   }
   droneVia[i] |= 1 << src;
+  if (ch) droneCh[i] = ch;
+}
+
+// kanał Wi-Fi, na którym ostatnio słyszano drona (dron Wi-Fi bez RID: kanał jego sieci); 0 = nieznany
+static uint8_t droneLastCh(const DroneInfo &d) {
+  if (d.wifiKind) return d.wifiCh;
+  int i = &d - drones;
+  return droneViaFirst[i] == d.firstMs ? droneCh[i] : 0;
+}
+
+// czy na kanale słychać teraz drona (zakładka Pasmo: czerwony kanał)
+static bool droneOnChannel(uint8_t ch, uint32_t maxAgeMs) {
+  uint32_t now = millis();
+  for (auto &d : drones)
+    if (d.used && now - d.lastMs < maxAgeMs && droneLastCh(d) == ch) return true;
+  return false;
 }
 
 static String viaText(const DroneInfo &d) {

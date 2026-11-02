@@ -431,7 +431,7 @@ void loop() {
     printFrame(f);
     sdLog(f);
     DroneInfo *d = parseFrame(f);
-    if (d) droneNoteVia(*d, f.src);
+    if (d) droneNoteVia(*d, f.src, f.transport == T_BLE ? 0 : f.channel);
     if (d && !d->shown && (d->id[0] || millis() - d->firstMs > 5000)) {  // chwila na Basic ID
       d->shown = true;
       alertNewDrone(*d);

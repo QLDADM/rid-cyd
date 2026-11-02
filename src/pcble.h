@@ -21,6 +21,7 @@
 #define PHONE_DRONE_MAX_AGE_MS 60000
 
 static bool ownCsReplaced();  // sensors.h: pasmo 2,4 GHz przychodzi z czujnika C5 nr 1
+static uint8_t droneLastCh(const DroneInfo &d);  // sensors.h: kanał ostatniej ramki Wi-Fi drona
 
 static NimBLEServer *pcServer = nullptr;
 static NimBLECharacteristic *pcTx = nullptr, *phoneTx = nullptr;
@@ -193,6 +194,7 @@ static void phoneSendDrone(const DroneInfo &d, uint32_t now) {
   uint8_t tag = tagStatus(d.id);
   if (tag) { PH_ADD(",\"tag\":\"%s\"", tag == TAG_OWN ? "own" : "foreign"); }
   if (d.wifiKind) { PH_ADD(",\"wifi\":\"%s\",\"ch\":%u", d.wifiKind, d.wifiCh); }
+  else if (uint8_t ch = droneLastCh(d)) { PH_ADD(",\"ch\":%u", ch); }  // kanał w panelu pasm na czerwono
   if (d.hasLoc) { PH_ADD(",\"lat\":%.7f,\"lon\":%.7f,\"st\":%u", d.lat * 1e-7, d.lon * 1e-7, d.status); }
   if (!isnan(d.height)) { PH_ADD(",\"h\":%.1f", d.height); }
   if (!isnan(d.altGeo)) { PH_ADD(",\"alt\":%.1f", d.altGeo); }

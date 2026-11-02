@@ -88,9 +88,11 @@ def main():
     p.add_argument("--time", type=int, default=0, help="ile sekund (0 = do Ctrl+C)")
     a = p.parse_args()
 
-    s = serial.Serial(a.port, 921600, timeout=0.2)
-    s.dtr = False  # bez resetu płytki (jak agent)
+    s = serial.Serial()
+    s.port, s.baudrate, s.timeout = a.port, 921600, 0.2
+    s.dtr = False  # bez resetu płytki przy otwarciu (jak agent) - liczniki CYD zostają
     s.rts = False
+    s.open()
     stop = threading.Event()
 
     def reader():

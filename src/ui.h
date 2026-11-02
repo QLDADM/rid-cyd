@@ -310,8 +310,10 @@ static void drawBandBars(int top, int hMax, const uint8_t *ch, const uint16_t *r
     int h = rate[i] ? min(hMax, (int)(log10f(rate[i] + 1) * hMax / 3)) : 0;
     tft.drawRect(x, top, w - 2, hMax, C_LINE);
     if (h) tft.fillRect(x + 1, base - h, w - 4, h, peak[i] > -128 ? rssiColor(peak[i]) : C_MUTED);
-    if (w >= 18 || i % 2 == 0) {  // przy wąskich słupkach (5 GHz) co drugi numer kanału
-      tft.setTextColor(ch[i] == curCh ? C_ACCENT : C_MUTED, C_BG);
+    bool hit = droneOnChannel(ch[i], UI_STALE_MS);  // na tym kanale słychać teraz drona
+    if (hit) tft.drawRect(x - 1, top - 1, w, hMax + 2, C_FOREIGN);
+    if (hit || w >= 18 || i % 2 == 0) {  // przy wąskich słupkach (5 GHz) co drugi numer kanału
+      tft.setTextColor(hit ? C_FOREIGN : ch[i] == curCh ? C_ACCENT : C_MUTED, C_BG);
       tft.drawString(String(ch[i]), x + (w - 2) / 2, base + 2, 1);
     }
   }
@@ -364,7 +366,7 @@ static void drawBand() {
   int ys = TOP_H + 152;
   tft.drawFastHLine(0, ys - 3, 320, C_LINE);
   for (int s = 0; s < SENS_N; s++) bandTitle(ys + s * 12, sensStatusText(s), "", sensOnline(s) ? C_TEXT : C_MUTED);
-  bandTitle(ys + 24, "Slupek: ramki/s (log), kolor: najsilniejszy sygnal", "");
+  bandTitle(ys + 24, "Slupek: ramki/s (log), kolor: sygnal, czerwony kanal: dron", "");
 }
 
 // ---------------------------------------------------------------- ustawienia
