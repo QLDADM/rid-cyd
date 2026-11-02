@@ -94,7 +94,8 @@ Pliki na karcie SD zostają.
 - **Szczegóły**: dane drona i operatora, także klasa UE, prędkość pionowa, numer operatora, maksymalna wysokość,
   odległość dron–operator i **Odbiór** (CYD / C5-1 / C5-2), oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
 - **Radar**: drony (trójkąt w kierunku lotu) i operatorzy (kwadraty) w skali, z podziałką.
-- **Pasmo**: zajętość kanałów Wi-Fi 2,4 GHz i 5 GHz (ramki na sekundę, kolor = najsilniejszy sygnał) oraz stan
+- **Pasmo**: zajętość kanałów Wi-Fi 2,4 GHz i 5 GHz (ramki na sekundę, kolor = najsilniejszy sygnał, czerwona ramka =
+  kanał, na którym przez ostatnie 15 s słychać drona) oraz stan
   czujników C5.
 - **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
 - **Ustawienia**: kanał Wi-Fi (skakanie albo stały 6), jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
@@ -132,6 +133,7 @@ Każdy czujnik ma osobne zasilanie USB. Pinów 5 V nie łączyć.
 - Na górnym pasku **C1** i **C2**: zielony = czujnik działa, czerwony = zamilkł, szary = nie był podłączony.
 - Zakładka **Pasmo**: 2,4 GHz z C5 nr 1 (bez niego z radia CYD), 5 GHz z C5 nr 2 i stan obu czujników
   (kanał, liczba ramek Remote ID, błędne linie). Te same dane idą na tablet i do agenta (panele pasm na stronach).
+- Na tablet CYD wysyła też kanał, na którym słyszy drona Remote ID (pole `ch`), więc panel pasm na stronie zaznacza go na czerwono.
 - Format linii czujnika (z sumą kontrolną jak w NMEA) jest opisany w `src/sensors.h`.
 - Obsługa modułu nRF24L01 została usunięta: piny IO27 i IO35 służą teraz czujnikom, a regulacja jasności ekranu działa zawsze.
 
