@@ -148,7 +148,7 @@ Każdy czujnik ma osobne zasilanie USB. Pinów 5 V nie łączyć.
 - Ramki Remote ID z czujników trafiają do tego samego dekodera co z radia CYD: lista, alarmy, oznaczenia, karta SD,
   telefon i agent działają tak samo. W szczegółach drona wiersz **Odbiór** mówi, kto go słyszał (np. `CYD+C5-1`).
 - Na górnym pasku **C1** i **C2**: zielony = czujnik działa, czerwony = zamilkł, szary = nie był podłączony.
-- Zakładka **Pasmo**: 2,4 GHz z C5 nr 1 (bez niego z radia CYD), 5 GHz z C5 nr 2 i stan obu czujników
+- Zakładka **Czujniki**: 2,4 GHz z C5 nr 1, 5 GHz z C5 nr 2 (CYD nie podaje własnej zajętości kanałów) i stan obu czujników
   (kanał, liczba ramek Remote ID, błędne linie). Te same dane idą na tablet i do agenta (panele pasm na stronach).
 - Na tablet CYD wysyła też kanał, na którym słyszy drona Remote ID (pole `ch`), więc panel pasm na stronie zaznacza go na czerwono.
 - Format linii czujnika (z sumą kontrolną jak w NMEA) jest opisany w `src/sensors.h`.

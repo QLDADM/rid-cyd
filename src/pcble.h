@@ -20,7 +20,6 @@
 #define PHONE_STATUS_MS 5000
 #define PHONE_DRONE_MAX_AGE_MS 60000
 
-static bool ownCsReplaced();  // sensors.h: pasmo 2,4 GHz przychodzi z czujnika C5 nr 1
 static uint8_t droneLastCh(const DroneInfo &d);  // sensors.h: kanał ostatniej ramki Wi-Fi drona
 
 static NimBLEServer *pcServer = nullptr;
@@ -327,20 +326,6 @@ static void pcBleTick() {
   if (now - lastAdv > 2000) {
     lastAdv = now;
     if (bleEnabled) pcAdvertise(true);  // reklama także przy połączeniu: kilka telefonów i komputer naraz
-  }
-  static uint32_t lastChSent = 0;
-  // nowe podsumowanie kanałów Wi-Fi: panel pasma na stronach (telefon i przez agenta);
-  // gdy działa C5 nr 1 (z anteną słyszy więcej), idą tylko jego dane (sensors.h)
-  if (chSummaryMs != lastChSent && !ownCsReplaced()) {
-    lastChSent = chSummaryMs;
-    char line[200];
-    size_t n = snprintf(line, sizeof(line), "{\"cs\":{\"b\":\"2G4\",\"r\":[");
-    for (int c = 1; c <= 13; c++) n += snprintf(line + n, sizeof(line) - n, "%s%u", c > 1 ? "," : "", chRate[c]);
-    n += snprintf(line + n, sizeof(line) - n, "],\"p\":[");
-    for (int c = 1; c <= 13; c++) n += snprintf(line + n, sizeof(line) - n, "%s%d", c > 1 ? "," : "", chRssi[c]);
-    snprintf(line + n, sizeof(line) - n, "]}}\n");
-    Serial.print(line);
-    if (phoneSubscribed) phoneSend(line);
   }
   if (!phoneSubscribed) return;
   if (phoneWantTags) {

@@ -2,7 +2,7 @@
 //   pasek górny (stan) | treść | pasek zakładek: Lista / Czujniki / Ustawienia
 //   Lista: do 5 dronów na stronę (ponowne dotknięcie "Lista" = następna strona), dotknięcie = szczegóły
 //   Szczegóły: wszystkie dane + przyciski SWOJ / OBCY / BRAK / WSTECZ
-//   Czujniki: stan C5 nr 1 i nr 2 (działa / cisza / brak, kanał, ramki, błędy) i małe wykresy pasm 2,4 / 5 GHz
+//   Czujniki: stan C5 nr 1 i nr 2 (działa / cisza / brak, kanał, ramki, błędy) i małe wykresy pasm 2,4 / 5 GHz z czujników
 //   (radaru na CYD nie ma - bez GPS nie pokazuje dronów względem Ciebie; radar i pełne pasma są na tablecie)
 //   Ustawienia: kanał Wi-Fi, jasność, odwrócenie kolorów, dźwięk, zapis SD, Bluetooth, wygaszanie ekranu, kalibracja
 //   Ekran gaśnie po 1 min bez dotyku (ustawienie); pierwszy dotyk tylko go budzi, budzi go też nowy dron i parowanie.
@@ -302,7 +302,6 @@ static void drawSensorBlock(int y, int s) {
 }
 
 static void drawSensors() {
-  static const uint8_t CH24[13] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
   tft.fillRect(0, TOP_H, 320, TAB_Y - TOP_H, C_BG);
   uint32_t now = millis();
   drawSensorBlock(TOP_H + 4, 0);
@@ -310,12 +309,14 @@ static void drawSensors() {
   // pasma: małe wykresy do szybkiego sprawdzenia; pełne panele są na tablecie
   int y = TOP_H + 64;
   tft.drawFastHLine(0, y, 320, C_LINE);
-  if (bandFresh(band24) && band24.src) {
-    bandTitle(y + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), String((now - band24.ms) / 1000) + " s temu");
-    drawBandBars(y + 13, 28, band24.ch, band24.rate, band24.peak, band24.n, sens[band24.src - 1].ch);
+  // pasma tylko z czujników C5 - CYD nie podaje własnej zajętości kanałów
+  if (band24.ms) {
+    bool fresh = bandFresh(band24);
+    bandTitle(y + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), (fresh ? "" : "stare, ") + String((now - band24.ms) / 1000) + " s temu",
+              fresh ? C_TEXT : C_MUTED);
+    drawBandBars(y + 13, 28, band24.ch, band24.rate, band24.peak, band24.n, band24.src ? sens[band24.src - 1].ch : 0);
   } else {
-    bandTitle(y + 3, "Wi-Fi 2,4 GHz - radio CYD", "bez C5 nr 1");
-    drawBandBars(y + 13, 28, CH24, chRate + 1, chRssi + 1, 13, currentChannel);
+    bandTitle(y + 3, "Wi-Fi 2,4 GHz", "brak danych z C5 nr 1", C_MUTED);
   }
   int y5 = y + 56;
   if (band5.ms) {

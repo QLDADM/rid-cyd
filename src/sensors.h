@@ -223,8 +223,6 @@ static void sensorsBegin() {
 
 static const char *srcName(uint8_t src) { return src == 1 ? "c5-1" : src == 2 ? "c5-2" : "cyd"; }
 
-// pcble.h: własne pasmo 2,4 GHz nie jest wysyłane, gdy dane daje C5 nr 1
-static bool ownCsReplaced() { return bandFresh(band24) && band24.src; }
 
 // skąd jest dron: bit 0 = radio CYD, bit 1 = C5 nr 1, bit 2 = C5 nr 2, oraz kanał Wi-Fi ostatniej ramki
 // (0 = BLE / brak); zerowane, gdy slot zajmie nowy dron
