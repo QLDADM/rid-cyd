@@ -14,7 +14,20 @@ wykrywacz dronów z kolorowym ekranem dotykowym:
 - Łączy się przez Bluetooth z [podglądem na telefonie](https://qldadm.github.io/dron-detector/), także razem z płytką Heltec.
 - Przez USB działa jako sensor agenta RID Decoder na komputerze (opcjonalnie).
 
-Ten sam numer wersji mają firmware dla [Dron Detector (Heltec V3)](https://github.com/QLDADM/dron-detector) i [M5StickC Plus2](https://github.com/QLDADM/rid-m5).
+## Projekt Dron Detector
+
+Ten firmware jest częścią projektu **Dron Detector** - pasywnego systemu wykrywania dronów. CYD jest w nim centralą systemu w walizce. Wszystkie części tylko **odbierają** sygnały - nic nie nadają w stronę drona.
+
+| Część | Rola | Gdzie |
+|---|---|---|
+| **Strona podglądu** (telefon, tablet, komputer) | lista dronów, mapa, radar, widok 3D, wysokość nad terenem (AGL), pasma Wi-Fi | [dron-detector](https://github.com/QLDADM/dron-detector), **https://qldadm.github.io/dron-detector/** |
+| **Heltec V3** | samodzielny wykrywacz Remote ID, alarmy LoRa do aplikacji Meshtastic | [dron-detector/firmware](https://github.com/QLDADM/dron-detector/tree/main/firmware) |
+| **CYD** (ESP32-2432S028) | centrala systemu w walizce: ekran dotykowy, karta SD, czujniki ESP32-C5, Bluetooth do tabletu | [rid-cyd](https://github.com/QLDADM/rid-cyd) |
+| **ESP32-C5** (2 szt., anteny zewnętrzne) | czujniki Remote ID na Wi-Fi 2,4 GHz i 5 GHz, podłączone przewodem do CYD | firmware w przygotowaniu |
+| **M5StickC Plus2** | osobisty alarm w kieszeni, tryb szukania drona po sile sygnału | [rid-m5](https://github.com/QLDADM/rid-m5) |
+| **Quansheng UV-K5** | wykrywanie łączy sterowania ELRS / Crossfire (433 / 868 / 915 MHz) i wideo FPV 1,2 GHz | [dron-k5](https://github.com/QLDADM/dron-k5) |
+
+Firmware Heltec, CYD i M5 ma wspólny numer wersji (1.6), a strona podglądu własny (1.0).
 
 ---
 

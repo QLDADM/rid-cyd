@@ -29,6 +29,9 @@ from datetime import datetime, timezone
 
 import serial
 
+# wysokość geodezyjna (nad elipsoidą WGS-84) terenu w Nowym Wiśniczu: 275 m n.p.m. (NMT GUGiK) + 38,6 m geoidy -
+# AGL na stronach wychodzi wtedy realny
+GROUND_HAE = 275 + 38.6
 EPOCH_2019 = datetime(2019, 1, 1, tzinfo=timezone.utc).timestamp()
 CH_5G = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140]
 
@@ -52,14 +55,14 @@ def location(lat, lon, height, speed, track) -> bytes:
     secs = time.time() % 3600
     return (bytes([0x12, flags, int(track) - 180 * ew, int(round(speed / 0.25))]) + struct.pack("<b", 0)
             + struct.pack("<ii", int(lat * 1e7), int(lon * 1e7))
-            + struct.pack("<HHH", alt_enc(108 + height), alt_enc(110 + height), alt_enc(height))
+            + struct.pack("<HHH", alt_enc(GROUND_HAE - 2 + height), alt_enc(GROUND_HAE + height), alt_enc(height))
             + bytes([(4 << 4) | 10, (3 << 4) | 2]) + struct.pack("<H", int(secs * 10)) + bytes([5, 0]))
 
 
 def system(op_lat, op_lon) -> bytes:
     return (bytes([0x42, (1 << 2) | 1]) + struct.pack("<ii", int(op_lat * 1e7), int(op_lon * 1e7))
             + struct.pack("<H", 1) + bytes([0]) + struct.pack("<HH", 0, 0) + bytes([(1 << 4) | 2])
-            + struct.pack("<H", alt_enc(110)) + struct.pack("<I", int(time.time() - EPOCH_2019)) + b"\x00")
+            + struct.pack("<H", alt_enc(GROUND_HAE + 1.5)) + struct.pack("<I", int(time.time() - EPOCH_2019)) + b"\x00")
 
 
 def operator_id(op: str) -> bytes:
