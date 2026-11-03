@@ -114,7 +114,7 @@ Pliki na karcie SD zostają.
   czujników C5.
 - **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
 - **Ustawienia**: jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
-  zapis na kartę SD, **Bluetooth wł./wył.** (wyłączony: tylko czujniki C5, bez tabletu i komputera przez Bluetooth), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
+  zapis na kartę SD, **Bluetooth wł./wył.** (wyłączony: tylko czujniki C5, bez połączenia z tabletem), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
 
 Ekran gaśnie domyślnie po minucie bez dotyku (mniej prądu i ciepła w zamkniętej walizce). Pierwsze dotknięcie
 tylko go budzi; budzi go też nowy dron i parowanie z PIN-em. Nasłuch, przekazywanie danych na tablet i alarm działają cały czas.
@@ -172,8 +172,8 @@ python tools/c5_sim.py --port COM11 --lat 50.06 --lon 19.94 --time 600   # inny 
 
 Pliki `/rid/rid-RRRRMMDD.jsonl` (gdy płytka zna czas) albo `/rid/boot-NNNN.jsonl`. Jedna linia na ramkę,
 najwyżej 1 ramka danego typu z drona na 3 s:
-`{"t":unix,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"ch":6,"src":"cyd","d":"<hex>"}`
-(`src`: `cyd` = radio płytki (BLE), `c5-1` / `c5-2` = czujnik).
+`{"t":unix,"boot":N,"up":s,"tr":"wifi_beacon","mac":"..","rssi":-70,"ch":6,"src":"c5-1","d":"<hex>"}`
+(`src`: `cyd` = radio płytki, tylko BLE i `ch` 0; `c5-1` / `c5-2` = czujnik Wi-Fi z kanałem).
 
 ---
 
