@@ -4,9 +4,9 @@ Firmware dla płytki **ESP32-2432S028**, znanej jako „Cheap Yellow Display” 
 wykrywacz dronów z kolorowym ekranem dotykowym:
 
 - Odbiera Remote ID przez **Wi-Fi Beacon**, **Wi-Fi NAN** i **BLE 4**. BLE 5 Long Range nie działa, bo ESP32 na CYD ma Bluetooth 4.2.
-- Pokazuje **listę dronów**, **szczegóły** (pozycja, wysokość, prędkość, operator) i **radar**.
+- Pokazuje **listę dronów** i **szczegóły** (pozycja, wysokość, prędkość, operator). Radar i mapa są na tablecie.
 - Wykrywa też **drony Wi-Fi bez Remote ID** (DJI Tello, Parrot, zabawkowe drony z kamerą Wi-Fi) po nazwie sieci albo producencie.
-- Ma zakładkę **Pasmo** z zajętością kanałów Wi-Fi 2,4 GHz, a z czujnikiem ESP32-C5 także 5 GHz.
+- Ma zakładkę **Czujniki** ze stanem czujników ESP32-C5 i zajętością kanałów Wi-Fi 2,4 / 5 GHz. Ekran gaśnie sam po minucie.
 - Może być **centralą systemu w walizce**: przyjmuje wykrycia z dwóch czujników ESP32-C5 z antenami
   (2,4 i 5 GHz) przez przewody. Opis niżej.
 - Pozwala oznaczać drony jako **swój / obcy**. Przy nowym obcym dronie piszczy i świeci na czerwono.
@@ -106,13 +106,17 @@ Pliki na karcie SD zostają.
   odległość do operatora i czas od ostatniego odbioru. Dotknięcie wiersza otwiera szczegóły.
 - **Szczegóły**: dane drona i operatora, także klasa UE, prędkość pionowa, numer operatora, maksymalna wysokość,
   odległość dron–operator i **Odbiór** (CYD / C5-1 / C5-2), oraz przyciski **SWOJ / OBCY / BRAK / WSTECZ**.
-- **Radar**: drony (trójkąt w kierunku lotu) i operatorzy (kwadraty) w skali, z podziałką.
-- **Pasmo**: zajętość kanałów Wi-Fi 2,4 GHz i 5 GHz (ramki na sekundę, kolor = najsilniejszy sygnał, czerwona ramka =
-  kanał, na którym przez ostatnie 15 s słychać drona) oraz stan
+- **Czujniki**: stan czujników C5 nr 1 i nr 2 dużym napisem (**DZIAŁA / CISZA / BRAK**, kanał, liczba ramek Remote ID,
+  błędne linie, a przy braku podpowiedź, do którego złącza podłączyć przewód) i małe wykresy pasm Wi-Fi 2,4 / 5 GHz
+  (czerwona ramka = kanał, na którym przez ostatnie 15 s słychać drona). Gdy któryś czujnik zamilknie, napis „Czujniki”
+  na dolnym pasku robi się czerwony. Pełne pasma i radar są na tablecie - CYD nie ma GPS, więc radaru już nie ma. Stan
   czujników C5.
 - **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
 - **Ustawienia**: kanał Wi-Fi (skakanie albo stały 6), jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
-  zapis na kartę SD, **Bluetooth wł./wył.** (tryb „tylko Wi-Fi”) i **kalibracja dotyku**.
+  zapis na kartę SD, **Bluetooth wł./wył.** (tryb „tylko Wi-Fi”), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
+
+Ekran gaśnie domyślnie po minucie bez dotyku (mniej prądu i ciepła w zamkniętej walizce). Pierwsze dotknięcie
+tylko go budzi; budzi go też nowy dron i parowanie z PIN-em. Nasłuch, przekazywanie danych na tablet i alarm działają cały czas.
 
 Dioda RGB świeci przy nowym dronie: czerwono przy obcym lub nieoznaczonym, zielono przy swoim.
 

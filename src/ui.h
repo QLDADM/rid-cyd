@@ -1,10 +1,11 @@
 // Interfejs na ekranie dotykowym CYD (poziomo 320x240):
-//   pasek górny (stan) | treść | pasek zakładek: Lista / Radar / Pasmo / Ustawienia
+//   pasek górny (stan) | treść | pasek zakładek: Lista / Czujniki / Ustawienia
 //   Lista: do 5 dronów na stronę (ponowne dotknięcie "Lista" = następna strona), dotknięcie = szczegóły
 //   Szczegóły: wszystkie dane + przyciski SWOJ / OBCY / BRAK / WSTECZ
-//   Radar: drony i operatorzy w skali (bez pozycji własnej - płytka nie ma GPS)
-//   Pasmo: zajętość kanałów Wi-Fi 2,4 GHz (z C5 nr 1, bez niego z radia CYD) i 5 GHz (z C5 nr 2), stan czujników
-//   Ustawienia: kanał Wi-Fi, jasność, odwrócenie kolorów, dźwięk, zapis SD, kalibracja dotyku
+//   Czujniki: stan C5 nr 1 i nr 2 (działa / cisza / brak, kanał, ramki, błędy) i małe wykresy pasm 2,4 / 5 GHz
+//   (radaru na CYD nie ma - bez GPS nie pokazuje dronów względem Ciebie; radar i pełne pasma są na tablecie)
+//   Ustawienia: kanał Wi-Fi, jasność, odwrócenie kolorów, dźwięk, zapis SD, Bluetooth, wygaszanie ekranu, kalibracja
+//   Ekran gaśnie po 1 min bez dotyku (ustawienie); pierwszy dotyk tylko go budzi, budzi go też nowy dron i parowanie.
 //   Górny pasek: C1 / C2 = czujniki C5 (zielony działa, czerwony zamilkł, szary nie był podłączony)
 // Dołączany z main.cpp po drones.h, radio.h, sdlog.h, pcble.h, sensors.h, touch.h.
 #pragma once
@@ -27,7 +28,7 @@
 #define UI_DRONE_AGE_MS 300000UL  // lista: drony z ostatnich 5 min
 #define UI_STALE_MS 15000
 
-enum Screen : uint8_t { SCR_LIST, SCR_DETAIL, SCR_RADAR, SCR_SETTINGS, SCR_CALIB, SCR_BAND };
+enum Screen : uint8_t { SCR_LIST, SCR_DETAIL, SCR_SETTINGS, SCR_CALIB, SCR_SENSORS };
 
 static TFT_eSPI tft;
 static TFT_eSprite rowSpr(&tft);
@@ -38,6 +39,10 @@ static uint8_t selMac[6];
 static uint8_t brightIdx = 0;
 static const uint8_t BRIGHT[] = {255, 150, 70, 20};
 static bool invertColors = false, soundOn = true;
+static uint8_t sleepIdx = 0;  // wygaszanie ekranu: SLEEP_MS[sleepIdx], 0 = nigdy
+static const uint32_t SLEEP_MS[] = {60000, 300000, 0};
+static bool screenOff = false;  // podświetlenie wyłączone - nasłuch, przekazywanie i alarm działają dalej
+static uint32_t lastActivityMs = 0;
 static bool uiDirty = true;
 static uint8_t calStep = 0;
 static int calRaw[6];  // 3 punkty kalibracji: (20,20), (300,20), (20,220)
@@ -107,16 +112,20 @@ static void drawTopBar(int count) {
   tft.drawString(right, 316, 2, 2);
 }
 
-static const Screen TAB_SCREENS[] = {SCR_LIST, SCR_RADAR, SCR_BAND, SCR_SETTINGS};
+#define TABS_N 3
+static const Screen TAB_SCREENS[TABS_N] = {SCR_LIST, SCR_SENSORS, SCR_SETTINGS};
 
 static void drawTabs() {
-  static const char *TABS[] = {"Lista", "Radar", "Pasmo", "Ustawienia"};
-  for (int i = 0; i < 4; i++) {
+  static const char *TABS[TABS_N] = {"Lista", "Czujniki", "Ustawienia"};
+  for (int i = 0; i < TABS_N; i++) {
     bool sel = screen == TAB_SCREENS[i];
-    tft.fillRect(i * 80, TAB_Y, 79, 30, sel ? C_ACCENT : C_PANEL);
-    tft.setTextColor(sel ? C_BG : C_TEXT);
+    int x0 = i * 320 / TABS_N, w = (i + 1) * 320 / TABS_N - x0;
+    tft.fillRect(x0, TAB_Y, w - 1, 30, sel ? C_ACCENT : C_PANEL);
+    // czujnik C5 zamilkł - zakładka Czujniki na czerwono, widać z każdego ekranu
+    bool bad = TAB_SCREENS[i] == SCR_SENSORS && ((sens[0].lastMs && !sensOnline(0)) || (sens[1].lastMs && !sensOnline(1)));
+    tft.setTextColor(sel ? C_BG : bad ? C_FOREIGN : C_TEXT);
     tft.setTextDatum(MC_DATUM);
-    tft.drawString(TABS[i], i * 80 + 40, TAB_Y + 15, 2);
+    tft.drawString(TABS[i], x0 + w / 2, TAB_Y + 15, 2);
   }
 }
 
@@ -235,67 +244,6 @@ static void drawDetail() {
   drawButtonRow(LABELS, COLORS, 4);
 }
 
-// ---------------------------------------------------------------- radar
-
-static void drawRadar() {
-  tft.fillRect(0, TOP_H, 320, TAB_Y - TOP_H, C_BG);
-  DroneInfo *list[MAX_DRONES];
-  int n = listDrones(list);
-  int32_t minLat = INT32_MAX, maxLat = INT32_MIN, minLon = INT32_MAX, maxLon = INT32_MIN;
-  int pts = 0;
-  for (int i = 0; i < n; i++) {
-    const DroneInfo &d = *list[i];
-    if (d.hasLoc) { minLat = min(minLat, d.lat); maxLat = max(maxLat, d.lat); minLon = min(minLon, d.lon); maxLon = max(maxLon, d.lon); pts++; }
-    if (d.hasOp) { minLat = min(minLat, d.opLat); maxLat = max(maxLat, d.opLat); minLon = min(minLon, d.opLon); maxLon = max(maxLon, d.opLon); pts++; }
-  }
-  tft.setTextDatum(MC_DATUM);
-  if (!pts) {
-    tft.setTextColor(C_MUTED, C_BG);
-    tft.drawString("Brak pozycji dronow i operatorow", 160, 115, 2);
-    return;
-  }
-  // skala: metry na piksel, obszar 300x170, co najmniej 200 m
-  float cosLat = cosf((minLat + maxLat) * 0.5e-7f * DEG_TO_RAD);
-  float wM = (maxLon - minLon) * 1e-7f * 111320.0f * cosLat, hM = (maxLat - minLat) * 1e-7f * 111320.0f;
-  float span = max(max(wM / 300.0f, hM / 170.0f), 200.0f / 170.0f) * 1.25f;  // m/px z marginesem
-  int32_t cLat = (minLat + maxLat) / 2, cLon = (minLon + maxLon) / 2;
-  auto px = [&](int32_t lat, int32_t lon, int &x, int &y) {
-    x = 160 + (int)((lon - cLon) * 1e-7f * 111320.0f * cosLat / span);
-    y = 115 - (int)((lat - cLat) * 1e-7f * 111320.0f / span);
-  };
-  for (int i = 0; i < n; i++) {
-    const DroneInfo &d = *list[i];
-    int dx = 0, dy = 0, ox = 0, oy = 0;
-    if (d.hasLoc) px(d.lat, d.lon, dx, dy);
-    if (d.hasOp) px(d.opLat, d.opLon, ox, oy);
-    if (d.hasLoc && d.hasOp) tft.drawLine(dx, dy, ox, oy, C_LINE);
-    if (d.hasOp) tft.fillRect(ox - 3, oy - 3, 7, 7, C_UNKNOWN);
-    if (d.hasLoc) {
-      uint16_t c = tagColor(tagStatus(d.id));
-      if (d.track >= 0) {  // trójkąt w kierunku lotu
-        float a = d.track * DEG_TO_RAD;
-        tft.fillTriangle(dx + 9 * sinf(a), dy - 9 * cosf(a), dx + 6 * sinf(a + 2.5f), dy - 6 * cosf(a + 2.5f),
-                         dx + 6 * sinf(a - 2.5f), dy - 6 * cosf(a - 2.5f), c);
-      } else {
-        tft.fillCircle(dx, dy, 5, c);
-      }
-      tft.setTextColor(C_TEXT, C_BG);
-      tft.setTextDatum(ML_DATUM);
-      String sid = d.id[0] ? String(d.id + max(0, (int)strlen(d.id) - 6)) : String("?");
-      tft.drawString(sid + (isnan(d.height) ? "" : " " + String((int)d.height) + "m"), dx + 10, dy, 1);
-    }
-  }
-  // podziałka
-  int barM = span * 80 > 1000 ? 500 : span * 80 > 400 ? 200 : span * 80 > 150 ? 100 : 50;
-  int barPx = barM / span;
-  tft.drawFastHLine(8, TAB_Y - 10, barPx, C_TEXT);
-  tft.setTextColor(C_MUTED, C_BG);
-  tft.setTextDatum(BL_DATUM);
-  tft.drawString(String(barM) + " m", 10, TAB_Y - 12, 1);
-  tft.setTextDatum(TR_DATUM);
-  tft.drawString("N^  kwadrat = operator", 316, TOP_H + 4, 1);
-}
-
 // ---------------------------------------------------------------- pasmo: Wi-Fi 2,4 GHz i 5 GHz
 
 static uint16_t rssiColor(int8_t r) { return r >= -55 ? C_FOREIGN : r >= -70 ? C_UNKNOWN : C_OWN; }
@@ -328,51 +276,56 @@ static void bandTitle(int y, const String &left, const String &right, uint16_t c
   tft.drawString(right, 316, y, 1);
 }
 
-static String sensStatusText(int s) {
+// jeden czujnik: nazwa i pasmo, stan dużym napisem, pod spodem szczegóły albo podpowiedź podłączenia
+static void drawSensorBlock(int y, int s) {
   const SensorState &st = sens[s];
-  String t = "C5 nr " + String(s + 1) + (s ? " (5 GHz, GPIO27): " : " (2,4 GHz, GPIO35): ");
-  if (!st.lastMs) return t + "nie podlaczony";
-  if (!sensOnline(s)) return t + "cisza od " + ageText(st.lastMs);
-  return t + "kanal " + String(st.ch) + ", RID " + String(st.rid) + (st.bad ? ", bledy " + String(st.bad) : String(""));
+  bool on = sensOnline(s);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(C_TEXT, C_BG);
+  tft.drawString(String("C5 nr ") + (s + 1) + (s ? "   Wi-Fi 5 GHz" : "   Wi-Fi 2,4 GHz"), 6, y, 2);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(on ? C_OWN : st.lastMs ? C_FOREIGN : C_MUTED, C_BG);
+  tft.drawString(on ? String("DZIALA") : st.lastMs ? "CISZA " + ageText(st.lastMs) : String("BRAK"), 314, y, 2);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(C_MUTED, C_BG);
+  tft.drawString(!st.lastMs ? String("nie podlaczony - przewod TX czujnika do ") + (s ? "IO27 (zlacze CN1)" : "IO35 (zlacze P3)")
+                            : "kanal " + String(st.ch) + ", Remote ID " + String(st.rid) + ", drony Wi-Fi " + String(st.ap) +
+                                  ", bledne linie " + String(st.bad),
+                 6, y + 17, 1);
 }
 
-static void drawBand() {
+static void drawSensors() {
   static const uint8_t CH24[13] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
   tft.fillRect(0, TOP_H, 320, TAB_Y - TOP_H, C_BG);
   uint32_t now = millis();
-  // 2,4 GHz: z C5 nr 1 (antena zewnętrzna), bez niego z własnego radia CYD
+  drawSensorBlock(TOP_H + 4, 0);
+  drawSensorBlock(TOP_H + 34, 1);
+  // pasma: małe wykresy do szybkiego sprawdzenia; pełne panele są na tablecie
+  int y = TOP_H + 64;
+  tft.drawFastHLine(0, y, 320, C_LINE);
   if (bandFresh(band24) && band24.src) {
-    bandTitle(TOP_H + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), String((now - band24.ms) / 1000) + " s temu");
-    drawBandBars(TOP_H + 14, 46, band24.ch, band24.rate, band24.peak, band24.n, sens[band24.src - 1].ch);
+    bandTitle(y + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), String((now - band24.ms) / 1000) + " s temu");
+    drawBandBars(y + 13, 28, band24.ch, band24.rate, band24.peak, band24.n, sens[band24.src - 1].ch);
   } else {
-    bandTitle(TOP_H + 3, "Wi-Fi 2,4 GHz - radio CYD", "bez C5 nr 1");
-    drawBandBars(TOP_H + 14, 46, CH24, chRate + 1, chRssi + 1, 13, currentChannel);
+    bandTitle(y + 3, "Wi-Fi 2,4 GHz - radio CYD", "bez C5 nr 1");
+    drawBandBars(y + 13, 28, CH24, chRate + 1, chRssi + 1, 13, currentChannel);
   }
-  // 5 GHz: tylko z C5 nr 2 (ESP32 w CYD nie ma 5 GHz)
-  int y5 = TOP_H + 76;
-  tft.drawFastHLine(0, y5 - 3, 320, C_LINE);
+  int y5 = y + 56;
   if (band5.ms) {
     bool fresh = bandFresh(band5);
     bandTitle(y5, "Wi-Fi 5 GHz - C5 nr " + String(band5.src), (fresh ? "" : "stare, ") + String((now - band5.ms) / 1000) + " s temu",
               fresh ? C_TEXT : C_MUTED);
-    drawBandBars(y5 + 11, 46, band5.ch, band5.rate, band5.peak, band5.n, band5.src ? sens[band5.src - 1].ch : 0);
+    drawBandBars(y5 + 10, 28, band5.ch, band5.rate, band5.peak, band5.n, band5.src ? sens[band5.src - 1].ch : 0);
   } else {
-    bandTitle(y5, "Wi-Fi 5 GHz", "");
-    tft.setTextColor(C_MUTED, C_BG);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString("Brak danych - C5 nr 2 podlacza sie do GPIO27", 160, y5 + 34, 2);
+    bandTitle(y5, "Wi-Fi 5 GHz", "brak danych z C5 nr 2", C_MUTED);
   }
-  // stan czujników
-  int ys = TOP_H + 152;
-  tft.drawFastHLine(0, ys - 3, 320, C_LINE);
-  for (int s = 0; s < SENS_N; s++) bandTitle(ys + s * 12, sensStatusText(s), "", sensOnline(s) ? C_TEXT : C_MUTED);
-  bandTitle(ys + 24, "Slupek: ramki/s (log), kolor: sygnal, czerwony kanal: dron", "");
+  bandTitle(TAB_Y - 11, "Czerwony kanal: dron. Pelne pasma i radar na tablecie.", "", C_MUTED);
 }
 
 // ---------------------------------------------------------------- ustawienia
 
-#define SET_ROWS 7
-#define SET_ROW_H 26
+#define SET_ROWS 8
+#define SET_ROW_H 23
 static String settingText(int i) {
   switch (i) {
     case 0: return String("Kanal Wi-Fi: ") + (fixedChannel ? "staly 6" : "skakanie");
@@ -382,6 +335,7 @@ static String settingText(int i) {
     case 5: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko Wi-Fi)");
     case 4:
       return String("Zapis na karte SD: ") + (!sdOk ? "brak karty" : sdEnabled ? "wl. (" + String(sdLines) + " lin., " + String(sdFreeMB()) + " MB wolne)" : "wyl.");
+    case 6: return String("Wygaszanie ekranu: ") + (sleepIdx == 0 ? "po 1 min" : sleepIdx == 1 ? "po 5 min" : "nigdy");
     default: return "Kalibracja dotyku";
   }
 }

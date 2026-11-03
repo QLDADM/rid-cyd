@@ -141,7 +141,19 @@ static void beep(uint16_t hz, uint16_t ms) {
   ledcWriteTone(CH_SPEAKER, 0);
 }
 
+// ekran: zapala podświetlenie i liczy czas do wygaszenia od nowa
+static void applyDisplay();
+static void wakeScreen() {
+  lastActivityMs = millis();
+  if (!screenOff) return;
+  screenOff = false;
+  applyDisplay();
+  tft.fillScreen(C_BG);
+  uiDirty = true;
+}
+
 static void alertNewDrone(const DroneInfo &d) {
+  wakeScreen();  // nowy dron budzi ekran
   uint8_t tag = tagStatus(d.id);
   if (tag == TAG_OWN) {
     led(false, true, false);
@@ -156,7 +168,7 @@ static void alertNewDrone(const DroneInfo &d) {
 }
 
 static void applyDisplay() {
-  ledcWrite(CH_BACKLIGHT, BRIGHT[brightIdx]);
+  ledcWrite(CH_BACKLIGHT, screenOff ? 0 : BRIGHT[brightIdx]);
   tft.invertDisplay(invertColors);
 }
 
@@ -166,6 +178,7 @@ static void saveSettings() {
   prefs.putBool("sound", soundOn);
   prefs.putBool("sd", sdEnabled);
   prefs.putBool("ble", bleEnabled);
+  prefs.putUChar("sleep", sleepIdx);
   prefs.putBytes("tcal", &touchCal, sizeof(touchCal));
 }
 
@@ -306,7 +319,7 @@ static void onTap(int x, int y) {
         screen = SCR_LIST;
       }
     } else {
-      Screen next = TAB_SCREENS[min(x / 80, 3)];
+      Screen next = TAB_SCREENS[min(x * TABS_N / 320, TABS_N - 1)];
       if (next == SCR_LIST && screen == SCR_LIST) listPage++;  // kolejna strona listy
       screen = next;
     }
@@ -339,6 +352,8 @@ static void onTap(int x, int y) {
       bleSetEnabled(!bleEnabled);
       pcAdvertise(bleEnabled);  // tryb "tylko Wi-Fi": bez połączenia z komputerem przez BLE
     } else if (i == 6) {
+      sleepIdx = (sleepIdx + 1) % 3;
+    } else if (i == 7) {
       screen = SCR_CALIB;
       calStep = 0;
       drawCalib();
@@ -357,7 +372,11 @@ static void touchTick() {
   lastPoll = millis();
   int x, y;
   bool down = touchRead(x, y);
-  if (down && !wasDown) onTap(x, y);
+  if (down && !wasDown) {
+    bool wasOff = screenOff;
+    wakeScreen();
+    if (!wasOff) onTap(x, y);  // pierwszy dotyk wygaszonego ekranu tylko go budzi
+  }
   wasDown = down;
 }
 
@@ -370,8 +389,7 @@ static void render() {
   drawTopBar(n);
   if (screen == SCR_LIST) drawList();
   else if (screen == SCR_DETAIL) drawDetail();
-  else if (screen == SCR_RADAR) drawRadar();
-  else if (screen == SCR_BAND) drawBand();
+  else if (screen == SCR_SENSORS) drawSensors();
   else if (screen == SCR_SETTINGS) drawSettings();
   if (screen != SCR_DETAIL) drawTabs();
 }
@@ -396,6 +414,7 @@ void setup() {
   soundOn = prefs.getBool("sound", true);
   sdEnabled = prefs.getBool("sd", true);
   bleEnabled = prefs.getBool("ble", true);
+  sleepIdx = min<uint8_t>(prefs.getUChar("sleep", 0), 2);
   bool calibrated = prefs.getBytes("tcal", &touchCal, sizeof(touchCal)) == sizeof(touchCal);
   if (!calibrated) touchCal = {200, 3700, 240, 3800, 0};
   tagsLoad();
@@ -447,12 +466,13 @@ void loop() {
     wdPrint(Serial, *d);
   }
   uint8_t sensChange = sensorsTick();
-  if ((sensChange & SENS_STATE) || ((sensChange & SENS_NEW_BAND) && screen == SCR_BAND)) uiDirty = true;
+  if ((sensChange & SENS_STATE) || ((sensChange & SENS_NEW_BAND) && screen == SCR_SENSORS)) uiDirty = true;
   chSummaryTick();
   pcBleTick();
   static bool pairWas = false;
   if (blePairing != pairWas || bleUiDirty) {  // PIN na górnym pasku w trakcie parowania, zmiany z telefonu
     pairWas = blePairing;
+    if (blePairing) wakeScreen();  // PIN do wpisania na tablecie widać na górnym pasku
     bleUiDirty = false;
     uiDirty = true;
   }
@@ -464,7 +484,11 @@ void loop() {
     ledUntil = 0;
     led(false, false, false);
   }
-  if (uiDirty || now - lastDraw > 1000) {
+  if (!screenOff && SLEEP_MS[sleepIdx] && now - lastActivityMs > SLEEP_MS[sleepIdx] && screen != SCR_CALIB) {
+    screenOff = true;  // wygaszenie: bez podświetlenia i bez rysowania (mniej prądu i ciepła)
+    applyDisplay();
+  }
+  if (!screenOff && (uiDirty || now - lastDraw > 1000)) {
     uiDirty = false;
     lastDraw = now;
     render();
