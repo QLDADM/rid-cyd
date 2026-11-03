@@ -114,8 +114,7 @@ static void drawTopBar(int count) {
   }
   tft.setTextColor(C_TEXT, C_PANEL);
   tft.setTextDatum(TR_DATUM);
-  String right = String(bleEnabled ? (hostBleOn ? "PC " : "") : "WiFi ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + "CH" + String(currentChannel) +
-                 (fixedChannel ? " " : "* ") + clockText();
+  String right = String(bleEnabled ? (hostBleOn ? "PC " : "") : "bt- ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + clockText();
   tft.drawString(right, 316, 2, 2);
 }
 
@@ -310,20 +309,16 @@ static void drawSensors() {
   int y = TOP_H + 64;
   tft.drawFastHLine(0, y, 320, C_LINE);
   // pasma tylko z czujników C5 - CYD nie podaje własnej zajętości kanałów
-  if (band24.ms) {
-    bool fresh = bandFresh(band24);
-    bandTitle(y + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), (fresh ? "" : "stare, ") + String((now - band24.ms) / 1000) + " s temu",
-              fresh ? C_TEXT : C_MUTED);
-    drawBandBars(y + 13, 28, band24.ch, band24.rate, band24.peak, band24.n, band24.src ? sens[band24.src - 1].ch : 0);
+  if (bandLive(band24)) {
+    bandTitle(y + 3, "Wi-Fi 2,4 GHz - C5 nr " + String(band24.src), String((now - band24.ms) / 1000) + " s temu");
+    drawBandBars(y + 13, 28, band24.ch, band24.rate, band24.peak, band24.n, sens[band24.src - 1].ch);
   } else {
     bandTitle(y + 3, "Wi-Fi 2,4 GHz", "brak danych z C5 nr 1", C_MUTED);
   }
   int y5 = y + 56;
-  if (band5.ms) {
-    bool fresh = bandFresh(band5);
-    bandTitle(y5, "Wi-Fi 5 GHz - C5 nr " + String(band5.src), (fresh ? "" : "stare, ") + String((now - band5.ms) / 1000) + " s temu",
-              fresh ? C_TEXT : C_MUTED);
-    drawBandBars(y5 + 10, 28, band5.ch, band5.rate, band5.peak, band5.n, band5.src ? sens[band5.src - 1].ch : 0);
+  if (bandLive(band5)) {
+    bandTitle(y5, "Wi-Fi 5 GHz - C5 nr " + String(band5.src), String((now - band5.ms) / 1000) + " s temu");
+    drawBandBars(y5 + 10, 28, band5.ch, band5.rate, band5.peak, band5.n, sens[band5.src - 1].ch);
   } else {
     bandTitle(y5, "Wi-Fi 5 GHz", "brak danych z C5 nr 2", C_MUTED);
   }
@@ -332,18 +327,17 @@ static void drawSensors() {
 
 // ---------------------------------------------------------------- ustawienia
 
-#define SET_ROWS 8
-#define SET_ROW_H 23
+#define SET_ROWS 7
+#define SET_ROW_H 26
 static String settingText(int i) {
   switch (i) {
-    case 0: return String("Kanal Wi-Fi: ") + (fixedChannel ? "staly 6" : "skakanie");
-    case 1: return "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
-    case 2: return String("Odwroc kolory: ") + (invertColors ? "tak" : "nie");
-    case 3: return String("Dzwiek (glosnik): ") + (soundOn ? "wl." : "wyl.");
-    case 5: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko Wi-Fi)");
-    case 4:
+    case 0: return "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
+    case 1: return String("Odwroc kolory: ") + (invertColors ? "tak" : "nie");
+    case 2: return String("Dzwiek (glosnik): ") + (soundOn ? "wl." : "wyl.");
+    case 4: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko C5)");
+    case 3:
       return String("Zapis na karte SD: ") + (!sdOk ? "brak karty" : sdEnabled ? "wl. (" + String(sdLines) + " lin., " + String(sdFreeMB()) + " MB wolne)" : "wyl.");
-    case 6: return String("Wygaszanie ekranu: ") + (sleepIdx == 0 ? "po 1 min" : sleepIdx == 1 ? "po 5 min" : "nigdy");
+    case 5: return String("Wygaszanie ekranu: ") + (sleepIdx == 0 ? "po 1 min" : sleepIdx == 1 ? "po 5 min" : "nigdy");
     default: return "Kalibracja dotyku";
   }
 }

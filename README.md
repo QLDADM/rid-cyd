@@ -3,9 +3,10 @@
 Firmware dla płytki **ESP32-2432S028**, znanej jako „Cheap Yellow Display” (CYD). Zamienia ją w samodzielny
 wykrywacz dronów z kolorowym ekranem dotykowym:
 
-- Odbiera Remote ID przez **Wi-Fi Beacon**, **Wi-Fi NAN** i **BLE 4**. BLE 5 Long Range nie działa, bo ESP32 na CYD ma Bluetooth 4.2.
+- Sam odbiera Remote ID przez **BLE 4** (całe radio płytki jest dla Bluetooth). BLE 5 Long Range nie działa, bo ESP32 na CYD ma Bluetooth 4.2.
+  **Wi-Fi Beacon** i **Wi-Fi NAN** (2,4 i 5 GHz) odbierają czujniki ESP32-C5 podłączone przewodami - CYD nie słucha Wi-Fi.
 - Pokazuje **listę dronów** i **szczegóły** (pozycja, wysokość, prędkość, operator). Radar i mapa są na tablecie.
-- Wykrywa też **drony Wi-Fi bez Remote ID** (DJI Tello, Parrot, zabawkowe drony z kamerą Wi-Fi) po nazwie sieci albo producencie.
+- Pokazuje też **drony Wi-Fi bez Remote ID** (z czujników C5) (DJI Tello, Parrot, zabawkowe drony z kamerą Wi-Fi) po nazwie sieci albo producencie.
 - Ma zakładkę **Czujniki** ze stanem czujników ESP32-C5 i zajętością kanałów Wi-Fi 2,4 / 5 GHz. Ekran gaśnie sam po minucie.
 - Może być **centralą systemu w walizce**: przyjmuje wykrycia z dwóch czujników ESP32-C5 z antenami
   (2,4 i 5 GHz) przez przewody. Opis niżej.
@@ -112,8 +113,8 @@ Pliki na karcie SD zostają.
   na dolnym pasku robi się czerwony. Pełne pasma i radar są na tablecie - CYD nie ma GPS, więc radaru już nie ma. Stan
   czujników C5.
 - **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
-- **Ustawienia**: kanał Wi-Fi (skakanie albo stały 6), jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
-  zapis na kartę SD, **Bluetooth wł./wył.** (tryb „tylko Wi-Fi”), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
+- **Ustawienia**: jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
+  zapis na kartę SD, **Bluetooth wł./wył.** (wyłączony: tylko czujniki C5, bez tabletu i komputera przez Bluetooth), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
 
 Ekran gaśnie domyślnie po minucie bez dotyku (mniej prądu i ciepła w zamkniętej walizce). Pierwsze dotknięcie
 tylko go budzi; budzi go też nowy dron i parowanie z PIN-em. Nasłuch, przekazywanie danych na tablet i alarm działają cały czas.
@@ -130,7 +131,7 @@ w **Ustawieniach** (wiersz Bluetooth) i na górnym pasku w trakcie parowania. Na
   lotów na telefonie, bo zapisuje ramki na kartę SD.
 - **Komputer:** agent RID Decoder łączy się z CYD kablem USB. Przez Bluetooth łączy się z komputerem tylko Heltec,
   bo Windows nie paruje się z układem ESP32 w CYD.
-- Tryb **Bluetooth: wyl. (tylko Wi-Fi)** w Ustawieniach wyłącza też te połączenia.
+- Tryb **Bluetooth: wyl. (tylko C5)** w Ustawieniach wyłącza też te połączenia.
 
 ## Czujniki ESP32-C5: CYD jako centrala systemu w walizce
 
@@ -172,7 +173,7 @@ python tools/c5_sim.py --port COM11 --lat 50.06 --lon 19.94 --time 600   # inny 
 Pliki `/rid/rid-RRRRMMDD.jsonl` (gdy płytka zna czas) albo `/rid/boot-NNNN.jsonl`. Jedna linia na ramkę,
 najwyżej 1 ramka danego typu z drona na 3 s:
 `{"t":unix,"boot":N,"up":s,"tr":"ble","mac":"..","rssi":-70,"ch":6,"src":"cyd","d":"<hex>"}`
-(`src`: `cyd` = radio płytki, `c5-1` / `c5-2` = czujnik).
+(`src`: `cyd` = radio płytki (BLE), `c5-1` / `c5-2` = czujnik).
 
 ---
 
@@ -199,5 +200,5 @@ Wgranie przez PlatformIO nie kasuje ustawień.
 
 Linie JSON: ramki `{"t":...,"dev":"cyd","src":"cyd|c5-1|c5-2"}`, status (z polami `c5`, `c5_rid`, `c5_bad`),
 drony Wi-Fi `{"wd":{...}}`, pasma `{"cs":{"b":"2G4|5G","src":..,"c":[kanały],"r":[ramek/s],"p":[dBm]}}`.
-Polecenia: `ID`, `CH <n>`, `TIME <unix>`, `TAG <id> own|foreign|-`, `TAGS`, `TAGCLR`, `TAGPEND`, `PING`,
+Polecenia: `ID`, `TIME <unix>`, `TAG <id> own|foreign|-`, `TAGS`, `TAGCLR`, `TAGPEND`, `PING`,
 `TRAW` (surowe odczyty dotyku przez 20 s), `C5 <1|2> <linia>` (test czujnika bez płytki C5).

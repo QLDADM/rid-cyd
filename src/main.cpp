@@ -1,15 +1,16 @@
 // Wykrywacz Remote ID na płytce ESP32-2432S028 ("Cheap Yellow Display").
 //
-// Odbiera ramki Open Drone ID (Wi-Fi Beacon, Wi-Fi NAN, BLE 4), dekoduje je na płytce
+// Odbiera ramki Open Drone ID (BLE 4 sam, Wi-Fi Beacon / NAN z czujników C5), dekoduje je na płytce
 // i pokazuje na ekranie dotykowym; zapisuje ramki na kartę microSD. Przez USB (921600 bod)
 // mówi tym samym protokołem co sensor Heltec, więc agent RID Decoder obsługuje go
 // automatycznie (na stronie: "wykryto: CYD").
-// Do tego drony Wi-Fi bez Remote ID (wifidrone.h) i zajętość kanałów Wi-Fi (zakładka "Pasmo").
+// Do tego drony Wi-Fi bez Remote ID (wifidrone.h) i zajętość kanałów Wi-Fi - też z czujników C5.
+// CYD sam nie słucha Wi-Fi: całe radio jest dla Bluetooth.
 // Centrala systemu w walizce: przyjmuje ramki z czujników ESP32-C5 przez przewody UART
 // (C5 nr 1 = Wi-Fi 2,4 GHz na GPIO35, C5 nr 2 = Wi-Fi 5 GHz na GPIO27, sensors.h).
 // Agent może się też łączyć przez Bluetooth zamiast kabla (pcble.h), z tym samym protokołem.
 //
-// Polecenia przez port szeregowy: ID, CH 0..13, TIME <unix>, PING, TAG <id> own|foreign|-,
+// Polecenia przez port szeregowy: ID, TIME <unix>, PING, TAG <id> own|foreign|-,
 // TAGCLR, TAGS, TAGPEND, TAGPENDCLR, DUMP (pusty - zapis jest na karcie SD), C5 <1|2> <linia> (test czujnika).
 
 #include <Arduino.h>
@@ -108,7 +109,7 @@ static void enqueue(uint8_t transport, const uint8_t *mac, int8_t rssi, const ui
   if (len > sizeof(Frame::data)) return;
   Frame f;
   f.transport = transport;
-  f.channel = transport == T_BLE ? 0 : currentChannel;
+  f.channel = 0;  // własny odbiór CYD to tylko BLE
   f.rssi = rssi;
   f.src = 0;
   memcpy(f.mac, mac, 6);
@@ -207,11 +208,11 @@ static unsigned nvsFree() {  // wolne wpisy w pamięci ustawień (tam też trafi
 }
 
 static void printStatus() {
-  Serial.printf("{\"status\":{\"dev\":\"cyd\",\"beacon\":%u,\"nan\":%u,\"ble\":%u,\"dropped\":%u,\"ch\":%u,"
-                "\"all_beacon\":%u,\"all_ble\":%u,\"ble_on\":%s,\"sd\":%s,\"sd_lines\":%u,\"sd_free_mb\":%u,\"boot\":%u,\"up\":%u,"
+  Serial.printf("{\"status\":{\"dev\":\"cyd\",\"beacon\":%u,\"nan\":%u,\"ble\":%u,\"dropped\":%u,"
+                "\"all_ble\":%u,\"ble_on\":%s,\"sd\":%s,\"sd_lines\":%u,\"sd_free_mb\":%u,\"boot\":%u,\"up\":%u,"
                 "\"wifi_drone\":%u,\"c5\":[%s,%s],\"c5_rid\":[%u,%u],\"c5_bad\":[%u,%u],\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s,"
                 "\"bonds\":%d,\"nvs_free\":%u,\"heap\":%u}}\n",
-                counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, currentChannel, allBeacon, allBle,
+                counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, allBle,
                 bleEnabled ? "true" : "false", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
                 wdSeen, sensOnline(0) ? "true" : "false", sensOnline(1) ? "true" : "false", sens[0].rid, sens[1].rid, sens[0].bad,
                 sens[1].bad, pcPin, pcName, hostBleOn ? "true" : "false", NimBLEDevice::getNumBonds(), nvsFree(), ESP.getFreeHeap());
@@ -274,9 +275,6 @@ static void handleSerialCommand() {
       Serial.println("{\"dump_end\":{\"records\":0}}");
     } else if (!strncasecmp(buf, "C5 ", 3) && (buf[3] == '1' || buf[3] == '2') && buf[4] == ' ') {
       sensLine(buf[3] - '1', buf + 5);  // test bez czujnika: linia jak z przewodu UART
-    } else if (n >= 3 && !strncasecmp(buf, "CH", 2)) {
-      int ch = atoi(buf + 2);
-      if (ch >= 0 && ch <= 13) fixedChannel = ch;
     }
     n = 0;
   }
@@ -341,19 +339,18 @@ static void onTap(int x, int y) {
     }
   } else if (screen == SCR_SETTINGS) {
     int i = (y - TOP_H - 3) / SET_ROW_H;
-    if (i == 0) fixedChannel = fixedChannel ? 0 : 6;
-    else if (i == 1) brightIdx = (brightIdx + 1) % sizeof(BRIGHT);
-    else if (i == 2) invertColors = !invertColors;
-    else if (i == 3) soundOn = !soundOn;
-    else if (i == 4 && sdOk) {
+    if (i == 0) brightIdx = (brightIdx + 1) % sizeof(BRIGHT);
+    else if (i == 1) invertColors = !invertColors;
+    else if (i == 2) soundOn = !soundOn;
+    else if (i == 3 && sdOk) {
       sdEnabled = !sdEnabled;
       if (!sdEnabled && sdFile) sdFile.close();
-    } else if (i == 5) {
+    } else if (i == 4) {
       bleSetEnabled(!bleEnabled);
-      pcAdvertise(bleEnabled);  // tryb "tylko Wi-Fi": bez połączenia z komputerem przez BLE
-    } else if (i == 6) {
+      pcAdvertise(bleEnabled);  // bez Bluetooth: tylko czujniki C5, bez tabletu i komputera przez BLE
+    } else if (i == 5) {
       sleepIdx = (sleepIdx + 1) % 3;
-    } else if (i == 7) {
+    } else if (i == 6) {
       screen = SCR_CALIB;
       calStep = 0;
       drawCalib();
@@ -467,7 +464,6 @@ void loop() {
   }
   uint8_t sensChange = sensorsTick();
   if ((sensChange & SENS_STATE) || ((sensChange & SENS_NEW_BAND) && screen == SCR_SENSORS)) uiDirty = true;
-  chSummaryTick();
   pcBleTick();
   static bool pairWas = false;
   if (blePairing != pairWas || bleUiDirty) {  // PIN na górnym pasku w trakcie parowania, zmiany z telefonu

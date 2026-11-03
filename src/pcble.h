@@ -1,7 +1,7 @@
 // Bluetooth do telefonu i komputera (usługa jak w Heltec, więc obsługuje je ten sam kod strony i agenta).
 //  - telefon (NUS_TX / NUS_RX): strona podglądu dostaje linie JSON jak z Heltec:
 //      {"d":{...}} dron w zasięgu (co 1 s), {"s":{...}} stan płytki (co 5 s), {"tags":{...}} oznaczenia;
-//    polecenia: TAG <id> own|foreign|-, CH <n>, TIME <unix>, HIST (CYD nie ma historii - od razu hend 0).
+//    polecenia: TAG <id> own|foreign|-, TIME <unix>, HIST (CYD nie ma historii - od razu hend 0).
 //  - komputer (PC_TX / PC_RX): ten sam protokół co po USB (hostout.h). Uwaga: Windows nie paruje się
 //    z ESP32 w CYD (błąd po PIN-ie), więc agent łączy się z CYD kablem; kanał zostaje na przyszłość.
 // Parowanie z PIN-em (6 cyfr, losowany przy pierwszym starcie, widoczny w Ustawieniach i na górnym
@@ -21,6 +21,7 @@
 #define PHONE_DRONE_MAX_AGE_MS 60000
 
 static uint8_t droneLastCh(const DroneInfo &d);  // sensors.h: kanał ostatniej ramki Wi-Fi drona
+static bool sensOnline(int s);  // sensors.h: czujnik C5 nadaje (stan idzie na tablet)
 
 static NimBLEServer *pcServer = nullptr;
 static NimBLECharacteristic *pcTx = nullptr, *phoneTx = nullptr;
@@ -74,10 +75,9 @@ class PcServerCb : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer *, ble_gap_conn_desc *desc) override {
     bool sec = pcSecure(desc);
     bleConnSet(desc->conn_handle, sec);
-    if (!sec) {  // nowe połączenie: radio ESP32 dzielone z Wi-Fi i skanowaniem gubiło pakiety parowania
+    if (!sec) {  // nowe połączenie: przy ciągłym skanowaniu radio gubiło pakiety parowania
       pairScanHold = scanHold = true;
       NimBLEDevice::getScan()->stop();
-      esp_wifi_set_promiscuous(false);  // także nasłuch Wi-Fi: z nim parowanie z Windows stało po kilka sekund
     }
   }
   void onDisconnect(NimBLEServer *, ble_gap_conn_desc *desc) override {
@@ -234,9 +234,6 @@ static void phoneHandleCommand(const char *cmd) {
     tagRecordPending(buf, s);  // trafi na stronę RID Decoder przez agenta
     phoneWantTags = true;
     bleUiDirty = true;
-  } else if (!strncasecmp(cmd, "CH ", 3)) {
-    int ch = atoi(cmd + 3);
-    if (ch >= 0 && ch <= 13) fixedChannel = ch;
   }
 }
 
@@ -315,7 +312,6 @@ static void pcBleTick() {
     if (blePairing) pairDoneMs = now;
     else if (now - pairDoneMs > 3000) {
       pairScanHold = scanHold = false;
-      esp_wifi_set_promiscuous(true);
       if (bleEnabled) NimBLEDevice::getScan()->start(0, restartScan, false);
     }
   }
@@ -339,11 +335,11 @@ static void pcBleTick() {
   }
   if (now - lastStatus > PHONE_STATUS_MS) {
     lastStatus = now;
-    char line[260];
+    char line[300];
     snprintf(line, sizeof(line),
-             "{\"s\":{\"fw\":\"" FW_VERSION "\",\"dev\":\"cyd\",\"name\":\"%s\",\"bat\":-1,\"chg\":0,\"bmv\":0,\"mem\":%u,\"sd\":%s,\"ch\":%u,"
-             "\"fixed\":%s,\"pc\":%s,\"mesh\":false,\"up\":%u,\"pend\":%u,\"hist\":0}}\n",
-             pcName, sdLines, sdOk && sdEnabled ? "true" : "false", currentChannel, fixedChannel ? "true" : "false",
+             "{\"s\":{\"fw\":\"" FW_VERSION "\",\"dev\":\"cyd\",\"name\":\"%s\",\"bat\":-1,\"chg\":0,\"bmv\":0,\"mem\":%u,\"sd\":%s,"
+             "\"c5\":[%s,%s],\"pc\":%s,\"mesh\":false,\"up\":%u,\"pend\":%u,\"hist\":0}}\n",
+             pcName, sdLines, sdOk && sdEnabled ? "true" : "false", sensOnline(0) ? "true" : "false", sensOnline(1) ? "true" : "false",
              hostBleOn || (hostCmdMs && now - hostCmdMs < 30000) ? "true" : "false", now / 1000, tagPendingCount);
     phoneSend(line);
   }

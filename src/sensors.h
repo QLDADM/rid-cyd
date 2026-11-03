@@ -52,6 +52,8 @@ static uint32_t band24Sent = 0, band5Sent = 0;
 
 static bool sensOnline(int s) { return sens[s].lastMs && millis() - sens[s].lastMs < SENS_ONLINE_MS; }
 static bool bandFresh(const BandData &b) { return b.ms && millis() - b.ms < CS_FRESH_MS; }
+// wykres pasma tylko od działającego czujnika - po odłączeniu C5 (albo końcu testu) znika od razu
+static bool bandLive(const BandData &b) { return bandFresh(b) && b.src && sensOnline(b.src - 1); }
 
 static int hexVal(char c) {
   if (c >= '0' && c <= '9') return c - '0';
