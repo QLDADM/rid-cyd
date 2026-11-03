@@ -55,8 +55,15 @@ static int listDrones(DroneInfo **out) {
   int n = 0;
   for (auto &d : drones)
     if (d.used && now - d.lastMs < UI_DRONE_AGE_MS) out[n++] = &d;
+  // stała kolejność (sortowanie po ostatniej ramce przetasowywało listę co sekundę): na górze aktywne
+  // w kolejności wykrycia - najnowiej wykryty pierwszy i zostaje na miejscu - niżej nieaktywne od najświeższego
+  auto before = [now](const DroneInfo *a, const DroneInfo *b) {
+    bool aOn = now - a->lastMs < UI_STALE_MS, bOn = now - b->lastMs < UI_STALE_MS;
+    if (aOn != bOn) return aOn;
+    return aOn ? a->firstMs > b->firstMs : a->lastMs > b->lastMs;
+  };
   for (int i = 1; i < n; i++)
-    for (int j = i; j > 0 && out[j]->lastMs > out[j - 1]->lastMs; j--) {
+    for (int j = i; j > 0 && before(out[j], out[j - 1]); j--) {
       DroneInfo *t = out[j];
       out[j] = out[j - 1];
       out[j - 1] = t;
