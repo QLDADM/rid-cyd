@@ -114,7 +114,7 @@ Pliki na karcie SD zostają.
   czujników C5.
 - **Górny pasek**: liczba dronów (w trakcie parowania PIN), czujniki **C1 / C2**, Bluetooth, karta SD, kanał i godzina.
 - **Ustawienia**: jasność, odwrócenie kolorów, dźwięk (głośnik na złączu SPEAK),
-  zapis na kartę SD, **Bluetooth wł./wył.** (wyłączony: tylko czujniki C5, bez połączenia z tabletem), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
+  zapis na kartę SD, **PIN do parowania** z tabletem (Bluetooth działa zawsze), **wygaszanie ekranu** (po 1 min / po 5 min / nigdy) i **kalibracja dotyku**.
 
 Ekran gaśnie domyślnie po minucie bez dotyku (mniej prądu i ciepła w zamkniętej walizce). Pierwsze dotknięcie
 tylko go budzi; budzi go też nowy dron i parowanie z PIN-em. Nasłuch, przekazywanie danych na tablet i alarm działają cały czas.
@@ -131,7 +131,6 @@ w **Ustawieniach** (wiersz Bluetooth) i na górnym pasku w trakcie parowania. Na
   lotów na telefonie, bo zapisuje ramki na kartę SD.
 - **Komputer:** agent RID Decoder łączy się z CYD kablem USB. Przez Bluetooth łączy się z komputerem tylko Heltec,
   bo Windows nie paruje się z układem ESP32 w CYD.
-- Tryb **Bluetooth: wyl. (tylko C5)** w Ustawieniach wyłącza też te połączenia.
 
 ## Czujniki ESP32-C5: CYD jako centrala systemu w walizce
 

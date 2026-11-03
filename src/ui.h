@@ -114,7 +114,7 @@ static void drawTopBar(int count) {
   }
   tft.setTextColor(C_TEXT, C_PANEL);
   tft.setTextDatum(TR_DATUM);
-  String right = String(bleEnabled ? (hostBleOn ? "PC " : "") : "bt- ") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + clockText();
+  String right = String(hostBleOn ? "PC " : "") + (sdOk ? (sdEnabled ? "SD " : "sd- ") : "") + clockText();
   tft.drawString(right, 316, 2, 2);
 }
 
@@ -334,7 +334,7 @@ static String settingText(int i) {
     case 0: return "Jasnosc ekranu: " + String(BRIGHT[brightIdx] * 100 / 255) + "%";
     case 1: return String("Odwroc kolory: ") + (invertColors ? "tak" : "nie");
     case 2: return String("Dzwiek (glosnik): ") + (soundOn ? "wl." : "wyl.");
-    case 4: return bleEnabled ? "Bluetooth: wl.  PIN " + String(pcPin) + (hostBleOn ? "  PC" : "") + (phoneSubscribed ? "  tel." : "") : String("Bluetooth: wyl. (tylko C5)");
+    case 4: return "PIN do parowania: " + String(pcPin);  // tylko informacja - Bluetooth działa zawsze
     case 3:
       return String("Zapis na karte SD: ") + (!sdOk ? "brak karty" : sdEnabled ? "wl. (" + String(sdLines) + " lin., " + String(sdFreeMB()) + " MB wolne)" : "wyl.");
     case 5: return String("Wygaszanie ekranu: ") + (sleepIdx == 0 ? "po 1 min" : sleepIdx == 1 ? "po 5 min" : "nigdy");

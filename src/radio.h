@@ -32,18 +32,10 @@ class OdidScanCallbacks : public NimBLEAdvertisedDeviceCallbacks {
   }
 };
 
-static volatile bool bleEnabled = true;  // false = tylko czujniki C5 (bez skanu BLE i połączeń)
-
 static volatile bool scanHold = false;  // konfiguracja serwera BLE - stop() woła restartScan, który by wznowił skan
 
 static void restartScan(NimBLEScanResults) {
-  if (bleEnabled && !scanHold) NimBLEDevice::getScan()->start(0, restartScan, false);
-}
-
-static void bleSetEnabled(bool on) {
-  bleEnabled = on;
-  if (on) NimBLEDevice::getScan()->start(0, restartScan, false);
-  else NimBLEDevice::getScan()->stop();
+  if (!scanHold) NimBLEDevice::getScan()->start(0, restartScan, false);
 }
 
 static void radioBegin() {
@@ -56,5 +48,5 @@ static void radioBegin() {
   scan->setMaxResults(0);
   scan->setInterval(100);
   scan->setWindow(100);  // ciągły skan - radio nie jest dzielone z Wi-Fi
-  if (bleEnabled) scan->start(0, restartScan, false);
+  scan->start(0, restartScan, false);  // Bluetooth działa zawsze
 }

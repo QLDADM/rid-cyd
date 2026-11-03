@@ -286,7 +286,7 @@ static void pcBleBegin(bool advertise) {
   svc->start();
   pcServer->start();  // sam start przy pierwszej reklamie trafiałby na trwające skanowanie
   scanHold = false;
-  if (bleEnabled) NimBLEDevice::getScan()->start(0, restartScan, false);
+  NimBLEDevice::getScan()->start(0, restartScan, false);
   // nazwa w głównej reklamie (iPhone/Bluefy nie zawsze czyta odpowiedź na skan), usługa w odpowiedzi
   NimBLEAdvertising *a = NimBLEDevice::getAdvertising();
   NimBLEAdvertisementData advData, respData;
@@ -312,7 +312,7 @@ static void pcBleTick() {
     if (blePairing) pairDoneMs = now;
     else if (now - pairDoneMs > 3000) {
       pairScanHold = scanHold = false;
-      if (bleEnabled) NimBLEDevice::getScan()->start(0, restartScan, false);
+      NimBLEDevice::getScan()->start(0, restartScan, false);
     }
   }
   if (phoneCmdReady) {
@@ -321,7 +321,7 @@ static void pcBleTick() {
   }
   if (now - lastAdv > 2000) {
     lastAdv = now;
-    if (bleEnabled) pcAdvertise(true);  // reklama także przy połączeniu: kilka telefonów i komputer naraz
+    pcAdvertise(true);  // reklama także przy połączeniu: kilka telefonów i komputer naraz
   }
   if (!phoneSubscribed) return;
   if (phoneWantTags) {

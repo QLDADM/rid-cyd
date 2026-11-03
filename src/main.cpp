@@ -178,7 +178,6 @@ static void saveSettings() {
   prefs.putBool("inv", invertColors);
   prefs.putBool("sound", soundOn);
   prefs.putBool("sd", sdEnabled);
-  prefs.putBool("ble", bleEnabled);
   prefs.putUChar("sleep", sleepIdx);
   prefs.putBytes("tcal", &touchCal, sizeof(touchCal));
 }
@@ -213,7 +212,7 @@ static void printStatus() {
                 "\"wifi_drone\":%u,\"c5\":[%s,%s],\"c5_rid\":[%u,%u],\"c5_bad\":[%u,%u],\"pin\":%u,\"ble_name\":\"%s\",\"pc_ble\":%s,"
                 "\"bonds\":%d,\"nvs_free\":%u,\"heap\":%u}}\n",
                 counts[T_BEACON], counts[T_NAN], counts[T_BLE], dropped, allBle,
-                bleEnabled ? "true" : "false", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
+                "true", sdOk ? (sdEnabled ? "true" : "false") : "null", sdLines, sdFreeMB(), bootId, millis() / 1000,
                 wdSeen, sensOnline(0) ? "true" : "false", sensOnline(1) ? "true" : "false", sens[0].rid, sens[1].rid, sens[0].bad,
                 sens[1].bad, pcPin, pcName, hostBleOn ? "true" : "false", NimBLEDevice::getNumBonds(), nvsFree(), ESP.getFreeHeap());
 }
@@ -346,8 +345,7 @@ static void onTap(int x, int y) {
       sdEnabled = !sdEnabled;
       if (!sdEnabled && sdFile) sdFile.close();
     } else if (i == 4) {
-      bleSetEnabled(!bleEnabled);
-      pcAdvertise(bleEnabled);  // bez Bluetooth: tylko czujniki C5, bez tabletu i komputera przez BLE
+      return;  // PIN do parowania - tylko informacja
     } else if (i == 5) {
       sleepIdx = (sleepIdx + 1) % 3;
     } else if (i == 6) {
@@ -410,7 +408,6 @@ void setup() {
   invertColors = prefs.getBool("inv", false);
   soundOn = prefs.getBool("sound", true);
   sdEnabled = prefs.getBool("sd", true);
-  bleEnabled = prefs.getBool("ble", true);
   sleepIdx = min<uint8_t>(prefs.getUChar("sleep", 0), 2);
   bool calibrated = prefs.getBytes("tcal", &touchCal, sizeof(touchCal)) == sizeof(touchCal);
   if (!calibrated) touchCal = {200, 3700, 240, 3800, 0};
@@ -435,7 +432,7 @@ void setup() {
 
   frameQueue = xQueueCreate(32, sizeof(Frame));
   radioBegin();
-  pcBleBegin(bleEnabled);
+  pcBleBegin(true);  // Bluetooth działa zawsze
   sensorsBegin();  // czujniki C5 na GPIO35 / GPIO27 - działają same po podłączeniu przewodów
   Serial.println("{\"info\":\"RID sensor CYD gotowy\",\"dev\":\"cyd\"}");
 }
